@@ -294,6 +294,7 @@ public sealed class CustomHotbarBarConfig
 
     public string Name { get; set; } = string.Empty;
     public bool Visible { get; set; } = true;
+    public bool HideEmptySlots { get; set; }
     public Vector2 Position { get; set; } = new(400f, 300f);
     public float GlobalScale { get; set; } = 1f;
     public float Opacity { get; set; } = 0.85f;
@@ -363,9 +364,21 @@ internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
             ImGui.SetWindowFontScale(bar.EffectiveScale);
             var drawList = ImGui.GetWindowDrawList();
             var slots = bar.Slots;
-            for (var slotIndex = 0; slotIndex < slots.Count && slotIndex < CustomHotbar.SlotCount; slotIndex++)
+            var slotCount = Math.Min(slots.Count, CustomHotbar.SlotCount);
+            Span<int> visibleSlots = stackalloc int[CustomHotbar.SlotCount];
+            var visibleCount = 0;
+            for (var i = 0; i < slotCount; i++)
             {
-                if (slotIndex % columns > 0)
+                if (!bar.HideEmptySlots || slots[i].IconID > 0)
+                {
+                    visibleSlots[visibleCount++] = i;
+                }
+            }
+
+            for (var visibleIndex = 0; visibleIndex < visibleCount; visibleIndex++)
+            {
+                var slotIndex = visibleSlots[visibleIndex];
+                if (visibleIndex % columns > 0)
                 {
                     ImGui.SameLine(0f, spacing);
                 }
@@ -431,8 +444,6 @@ internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
         {
             drawList.AddImage(texture.Handle, position, position + size);
         }
-
-        drawList.AddRect(position, position + size, 0xFFC0C8D0, rounding, ImDrawFlags.None, MathF.Max(1f, scale));
     }
 
     private void UpdateWindowGeometry(CustomHotbarBarConfig bar)
@@ -635,6 +646,17 @@ internal static class CustomHotbarPanel
 
         ImGui.SameLine(0f, OmniTheme.Scale(6f));
         OmniControls.HelpIcon("锁定后无法拖动热键栏窗口, 防止误触移动");
+
+        ImGui.SameLine(0f, OmniTheme.Scale(12f));
+        var hideEmpty = bar.HideEmptySlots;
+        if (OmniControls.Checkbox("隐藏空格##customHotbarHideEmpty", ref hideEmpty))
+        {
+            bar.HideEmptySlots = hideEmpty;
+            changed = true;
+        }
+
+        ImGui.SameLine(0f, OmniTheme.Scale(6f));
+        OmniControls.HelpIcon("不渲染没有图标的格子, 热键栏会自动收缩; 只配了指令没配图标的格子同样会被隐藏");
 
         if (OmniControls.BeginCombo("布局##customHotbarLayout", bar.Layout.DisplayName(), OmniTheme.Scale(120f)))
         {
