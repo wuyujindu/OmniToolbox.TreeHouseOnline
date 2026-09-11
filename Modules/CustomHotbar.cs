@@ -10,7 +10,7 @@ using OmniToolbox.UI.Theme;
 using OmenTools;
 using OmenTools.OmenService;
 
-namespace OmniToolbox.TreePublic;
+namespace OmniToolbox.TreeHouseOnline;
 
 public sealed class CustomHotbar : ModuleBase
 {
@@ -21,7 +21,7 @@ public sealed class CustomHotbar : ModuleBase
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("切换热键栏显示/隐藏", "/customhotbar toggle 1")]
+        Commands = [new ModuleCommand("切换热键栏显示/隐藏", "/omni CustomHotbar toggle 1")]
     };
 
     public const int SlotCount = 12;
@@ -95,7 +95,20 @@ public sealed class CustomHotbar : ModuleBase
         lifetime?.Dispose();
     }
 
-    private void OnCommand(string command, string args)
+    public override bool TryHandleCommand(string arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            return false;
+        }
+
+        ToggleBar(arguments);
+        return true;
+    }
+
+    private void OnCommand(string command, string args) => ToggleBar(args);
+
+    private void ToggleBar(string args)
     {
         var argument = args.Trim();
         if (argument.StartsWith("toggle", StringComparison.OrdinalIgnoreCase))
@@ -124,10 +137,13 @@ public sealed class CustomHotbar : ModuleBase
             target = config.Bars[index - 1];
         }
 
-        if (target != null)
+        if (target == null)
         {
-            target.Visible = !target.Visible;
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: /omni CustomHotbar toggle <名称或序号>");
+            return;
         }
+
+        target.Visible = !target.Visible;
     }
 
     internal bool NormalizeConfig()
