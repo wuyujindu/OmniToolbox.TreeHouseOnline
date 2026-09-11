@@ -1,4 +1,5 @@
 using System.Globalization;
+using Dalamud.Game.Command;
 using Dalamud.Interface;
 using OmniToolbox.Common.Module.Abstractions;
 using OmniToolbox.Common.Module.Enums;
@@ -19,10 +20,12 @@ public sealed class CustomHotbar : ModuleBase
         Description = "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令",
         Category = ModuleCategory.Interface,
         Author = "WYJD",
-        SupportUrls = ["https://github.com/wuyujindu"]
+        SupportUrls = ["https://github.com/wuyujindu"],
+        Commands = [new ModuleCommand("切换热键栏显示/隐藏", "/customhotbar toggle 1")]
     };
 
     public const int SlotCount = 12;
+    private const string ToggleCommand = "/customhotbar";
 
     private CustomHotbarConfig config = new();
     private CustomHotbarOverlay? overlay;
@@ -54,6 +57,12 @@ public sealed class CustomHotbar : ModuleBase
         var lifetime = new FeatureLifetime();
         try
         {
+            DalamudServices.CommandManager.AddHandler(ToggleCommand, new CommandInfo(OnCommand)
+            {
+                HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
+            });
+            lifetime.Add(() => DalamudServices.CommandManager.RemoveHandler(ToggleCommand));
+
             var created = new CustomHotbarOverlay(config);
             var windowManager = WindowManager.Instance();
             _ = windowManager.WindowSystem;
@@ -84,6 +93,41 @@ public sealed class CustomHotbar : ModuleBase
         runtimeLifetime = null;
         overlay = null;
         lifetime?.Dispose();
+    }
+
+    private void OnCommand(string command, string args)
+    {
+        var argument = args.Trim();
+        if (argument.StartsWith("toggle", StringComparison.OrdinalIgnoreCase))
+        {
+            argument = argument[6..].Trim();
+        }
+
+        if (argument.Length == 0)
+        {
+            return;
+        }
+
+        CustomHotbarBarConfig? target = null;
+        foreach (var bar in config.Bars)
+        {
+            if (string.Equals(bar.Name, argument, StringComparison.Ordinal))
+            {
+                target = bar;
+                break;
+            }
+        }
+
+        if (target == null && int.TryParse(argument, out var index) &&
+            index >= 1 && index <= config.Bars.Count)
+        {
+            target = config.Bars[index - 1];
+        }
+
+        if (target != null)
+        {
+            target.Visible = !target.Visible;
+        }
     }
 
     internal bool NormalizeConfig()
@@ -295,9 +339,8 @@ internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
 
         using var styles = ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, bar.Scale(new Vector2(6f)))
             .Push(ImGuiStyleVar.WindowRounding, bar.Scale(6f))
-            .Push(ImGuiStyleVar.WindowBorderSize, OmniTheme.BorderThickness() * bar.EffectiveScale);
-        using var colors = ImRaii.PushColor(ImGuiCol.WindowBg, new Vector4(0.045f, 0.047f, 0.052f, bar.Opacity))
-            .Push(ImGuiCol.Border, new Vector4(0.72f, 0.75f, 0.8f, 0.42f));
+            .Push(ImGuiStyleVar.WindowBorderSize, 0f);
+        using var colors = ImRaii.PushColor(ImGuiCol.WindowBg, new Vector4(0.045f, 0.047f, 0.052f, bar.Opacity));
 
         if (ImGui.Begin($"{bar.Name}###OmniCustomHotbar{index}", flags))
         {
