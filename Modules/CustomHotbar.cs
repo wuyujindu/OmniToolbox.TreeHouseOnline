@@ -21,7 +21,7 @@ public sealed class CustomHotbar : ModuleBase
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("切换热键栏显示/隐藏", "/omni CustomHotbar toggle 1")]
+        Commands = [new ModuleCommand("切换热键栏显示/隐藏", "/omni CustomHotbar 切换 1")]
     };
 
     public const int SlotCount = 12;
@@ -59,7 +59,7 @@ public sealed class CustomHotbar : ModuleBase
         {
             DalamudServices.CommandManager.AddHandler(ToggleCommand, new CommandInfo(OnCommand)
             {
-                HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
+                HelpMessage = "切换热键栏显示/隐藏: /customhotbar 切换 <名称或序号>"
             });
             lifetime.Add(() => DalamudServices.CommandManager.RemoveHandler(ToggleCommand));
 
@@ -115,6 +115,10 @@ public sealed class CustomHotbar : ModuleBase
         {
             argument = argument[6..].Trim();
         }
+        else if (argument.StartsWith("切换", StringComparison.Ordinal))
+        {
+            argument = argument[2..].Trim();
+        }
 
         if (argument.Length == 0)
         {
@@ -139,7 +143,7 @@ public sealed class CustomHotbar : ModuleBase
 
         if (target == null)
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: /omni CustomHotbar toggle <名称或序号>");
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: /omni CustomHotbar 切换 <名称或序号>");
             return;
         }
 
@@ -712,17 +716,23 @@ internal static class CustomHotbarPanel
             return false;
         }
 
+        ImGui.TableSetupColumn("##reorder", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(32f));
         ImGui.TableSetupColumn("位置", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(80f));
         ImGui.TableSetupColumn("图标", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(200f));
         ImGui.TableSetupColumn("悬浮说明", ImGuiTableColumnFlags.WidthStretch);
         ImGui.TableSetupColumn("执行指令", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("排序", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(64f));
 
         ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
-        string[] headers = ["位置", "图标", "悬浮说明", "执行指令", "排序"];
+        string[] headers = ["", "位置", "图标", "悬浮说明", "执行指令"];
         for (var column = 0; column < headers.Length; column++)
         {
             ImGui.TableSetColumnIndex(column);
+            if (headers[column].Length == 0)
+            {
+                ImGui.TableHeader(string.Empty);
+                continue;
+            }
+
             var headerWidth = ImGui.GetContentRegionAvail().X;
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, (headerWidth - ImGui.CalcTextSize(headers[column]).X) * 0.5f));
             ImGui.TableHeader(headers[column]);
@@ -734,6 +744,10 @@ internal static class CustomHotbarPanel
             var slot = bar.Slots[index];
             ImGui.PushID(index);
             ImGui.TableNextRow(ImGuiTableRowFlags.None, rowHeight);
+
+            ImGui.TableNextColumn();
+            CenterCellContent(rowHeight, ImGui.GetFrameHeight());
+            changed |= DrawSlotReorderHandle(barIndex, bar.Slots, index);
 
             ImGui.TableNextColumn();
             CenterCellContent(rowHeight, ImGui.GetTextLineHeight());
@@ -764,10 +778,6 @@ internal static class CustomHotbarPanel
             }
 
             changed |= ImGui.IsItemDeactivatedAfterEdit();
-
-            ImGui.TableNextColumn();
-            CenterCellContent(rowHeight, ImGui.GetFrameHeight());
-            changed |= DrawSlotReorderHandle(barIndex, bar.Slots, index);
 
             ImGui.PopID();
         }
