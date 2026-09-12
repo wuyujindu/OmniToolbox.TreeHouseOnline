@@ -759,22 +759,19 @@ internal static class CustomHotbarPanel
             }
 
             ImGui.TableNextColumn();
-            CenterCellContent(rowHeight, ImGui.GetFrameHeight());
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, (ImGui.GetContentRegionAvail().X - ImGui.GetFrameHeight()) * 0.5f));
             DrawSlotReorderHandle(barIndex, bar.Slots, index);
 
             ImGui.TableNextColumn();
-            CenterCellContent(rowHeight, ImGui.GetTextLineHeight());
+            ImGui.AlignTextToFramePadding();
             var positionText = $"第{index / columns + 1}行 第{index % columns + 1}列";
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, (ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize(positionText).X) * 0.5f));
             ImGui.TextUnformatted(positionText);
 
             ImGui.TableNextColumn();
-            CenterCellContent(rowHeight, IconPreviewSize);
             changed |= DrawIconCell(slot, openIconBrowser);
 
             ImGui.TableNextColumn();
-            CenterCellContent(rowHeight, ImGui.GetFrameHeight());
             var tooltip = slot.Tooltip;
             ImGui.SetNextItemWidth(-1f);
             if (OmniControls.InputTextWithHint("##tooltip", "鼠标悬浮时显示的说明文本", ref tooltip, 128))
@@ -785,7 +782,6 @@ internal static class CustomHotbarPanel
             changed |= ImGui.IsItemDeactivatedAfterEdit();
 
             ImGui.TableNextColumn();
-            CenterCellContent(rowHeight, ImGui.GetFrameHeight());
             var command = slot.Command;
             ImGui.SetNextItemWidth(-1f);
             if (OmniControls.InputTextWithHint("##command", "如 /ac 技能名 或 /p 文本", ref command, 128))
@@ -799,15 +795,6 @@ internal static class CustomHotbarPanel
         }
 
         return changed;
-    }
-
-    private static void CenterCellContent(float rowHeight, float contentHeight)
-    {
-        var offset = (rowHeight - ImGui.GetStyle().CellPadding.Y * 2f - contentHeight) * 0.5f;
-        if (offset > 0f)
-        {
-            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + offset);
-        }
     }
 
     private static bool DrawIconCell(CustomHotbarSlot slot, Action<Action<uint>> openIconBrowser)
