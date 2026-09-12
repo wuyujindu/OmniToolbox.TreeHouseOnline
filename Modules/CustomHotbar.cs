@@ -249,7 +249,7 @@ public sealed class CustomHotbar : ModuleBase
 
         if (!DalamudServices.CommandManager.ProcessCommand(normalized))
         {
-            ChatManager.Instance().SendCommand(normalized);
+            ChatManager.Instance().SendMessage(normalized);
         }
     }
 }
