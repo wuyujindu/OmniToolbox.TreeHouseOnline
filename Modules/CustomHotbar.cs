@@ -801,17 +801,8 @@ internal static class CustomHotbarPanel
     {
         var changed = false;
 
-        var cursor = ImGui.GetCursorScreenPos();
         var previewSize = IconPreviewSize;
-        if (slot.IconID > 0 && ImageHelper.GetGameIcon(slot.IconID) is { } texture)
-        {
-            ImGui.GetWindowDrawList().AddImage(texture.Handle, cursor, cursor + new Vector2(previewSize));
-        }
-        else
-        {
-            ImGui.GetWindowDrawList().AddRect(cursor, cursor + new Vector2(previewSize), 0xFF808080, OmniTheme.Scale(2f));
-        }
-
+        var previewX = ImGui.GetCursorScreenPos().X;
         ImGui.Dummy(new Vector2(previewSize));
         ImGui.SameLine();
 
@@ -824,6 +815,18 @@ internal static class CustomHotbarPanel
         }
 
         changed |= ImGui.IsItemDeactivatedAfterEdit();
+
+        var inputMin = ImGui.GetItemRectMin();
+        var inputMax = ImGui.GetItemRectMax();
+        var previewPosition = new Vector2(previewX, inputMin.Y + MathF.Max(0f, (inputMax.Y - inputMin.Y - previewSize) * 0.5f));
+        if (slot.IconID > 0 && ImageHelper.GetGameIcon(slot.IconID) is { } texture)
+        {
+            ImGui.GetWindowDrawList().AddImage(texture.Handle, previewPosition, previewPosition + new Vector2(previewSize));
+        }
+        else
+        {
+            ImGui.GetWindowDrawList().AddRect(previewPosition, previewPosition + new Vector2(previewSize), 0xFF808080, OmniTheme.Scale(2f));
+        }
 
         ImGui.SameLine();
         if (OmniControls.SmallButton("选择##pickIcon", false))
