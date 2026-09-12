@@ -6,10 +6,10 @@
       "Name": "自定义热键栏",
       "Author": "WYJD",
       "Description": "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令",
-      "Version": "1.2.6",
+      "Version": "1.2.7",
       "MinimumOmniVersion": "1.1.2.10",
       "File": "Modules/CustomHotbar.cs",
-      "Sha256": "7CDCF90518F3ACDC973E4A72073119ACE3DAB1CDC4D65C6FF2D37CA3C001B229"
+      "Sha256": "B22481349ADED2A36DB10869FE47AEA0ED6E35E8E60A04E0818F04611AE2B451"
     }
   ]
 }
