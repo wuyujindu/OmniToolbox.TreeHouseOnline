@@ -21,7 +21,7 @@ public sealed class CustomHotbar : ModuleBase
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("切换热键栏显示/隐藏", "/omni CustomHotbar 切换 1")]
+        Commands = [new ModuleCommand("/omni CustomHotbar 切换 <热键栏名称/序号> → 切换指定热键栏的显示/隐藏", "/omni CustomHotbar 切换 1")]
     };
 
     public const int SlotCount = 12;
@@ -547,6 +547,7 @@ internal static class CustomHotbarPanel
     private static int selectedBarIndex;
     private static int draggedSlotBarIndex = -1;
     private static int draggedSlotIndex = -1;
+    private static bool reorderDirty;
 
     public static bool Draw(CustomHotbarConfig config, Action<Action<uint>> openIconBrowser)
     {
@@ -708,6 +709,14 @@ internal static class CustomHotbarPanel
     private static bool DrawSlotsTable(CustomHotbarBarConfig bar, int barIndex, Action<Action<uint>> openIconBrowser)
     {
         var changed = false;
+        if (reorderDirty && ImGui.GetDragDropPayload().IsNull)
+        {
+            reorderDirty = false;
+            draggedSlotBarIndex = -1;
+            draggedSlotIndex = -1;
+            changed = true;
+        }
+
         var columns = bar.Layout.Columns();
 
         using var table = ImRaii.Table("##customHotbarSlots", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY, new Vector2(-1f, OmniTheme.Scale(320f)));
@@ -744,10 +753,14 @@ internal static class CustomHotbarPanel
             var slot = bar.Slots[index];
             ImGui.PushID(index);
             ImGui.TableNextRow(ImGuiTableRowFlags.None, rowHeight);
+            if (draggedSlotBarIndex == barIndex && draggedSlotIndex == index)
+            {
+                ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(ImGuiCol.HeaderHovered));
+            }
 
             ImGui.TableNextColumn();
             CenterCellContent(rowHeight, ImGui.GetFrameHeight());
-            changed |= DrawSlotReorderHandle(barIndex, bar.Slots, index);
+            DrawSlotReorderHandle(barIndex, bar.Slots, index);
 
             ImGui.TableNextColumn();
             CenterCellContent(rowHeight, ImGui.GetTextLineHeight());
@@ -833,7 +846,7 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static bool DrawSlotReorderHandle(int barIndex, List<CustomHotbarSlot> slots, int index)
+    private static void DrawSlotReorderHandle(int barIndex, List<CustomHotbarSlot> slots, int index)
     {
         OmniControls.IconButton($"##customHotbarSlotReorder{barIndex}_{index}", FontAwesomeIcon.Bars, false, "按住拖动以调整格子位置");
 
@@ -854,23 +867,21 @@ internal static class CustomHotbarPanel
         using var target = ImRaii.DragDropTarget();
         if (!target)
         {
-            return false;
+            return;
         }
 
         var payload = ImGui.AcceptDragDropPayload(SlotReorderPayload);
         if (payload.IsNull ||
-            !payload.IsDelivery() ||
             draggedSlotBarIndex != barIndex ||
             draggedSlotIndex < 0 ||
             draggedSlotIndex == index)
         {
-            return false;
+            return;
         }
 
         (slots[draggedSlotIndex], slots[index]) = (slots[index], slots[draggedSlotIndex]);
-        draggedSlotBarIndex = -1;
-        draggedSlotIndex = -1;
-        return true;
+        draggedSlotIndex = index;
+        reorderDirty = true;
     }
 
 }
