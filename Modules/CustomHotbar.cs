@@ -242,14 +242,17 @@ public sealed class CustomHotbar : ModuleBase
 
     internal static void ExecuteCommand(string command)
     {
-        if (!TryNormalizeCommand(command, out var normalized))
+        foreach (var line in command.Split('\n'))
         {
-            return;
-        }
+            if (!TryNormalizeCommand(line, out var normalized))
+            {
+                continue;
+            }
 
-        if (!DalamudServices.CommandManager.ProcessCommand(normalized))
-        {
-            ChatManager.Instance().SendMessage(normalized);
+            if (!DalamudServices.CommandManager.ProcessCommand(normalized))
+            {
+                ChatManager.Instance().SendMessage(normalized);
+            }
         }
     }
 }
@@ -548,6 +551,8 @@ internal static class CustomHotbarPanel
     private static int draggedSlotBarIndex = -1;
     private static int draggedSlotIndex = -1;
     private static bool reorderDirty;
+    private static CustomHotbarSlot? editingSlot;
+    private static string editBuffer = string.Empty;
 
     public static bool Draw(CustomHotbarConfig config, Action<Action<uint>> openIconBrowser)
     {
@@ -783,18 +788,76 @@ internal static class CustomHotbarPanel
 
             ImGui.TableNextColumn();
             var command = slot.Command;
-            ImGui.SetNextItemWidth(-1f);
-            if (OmniControls.InputTextWithHint("##command", "如 /ac 技能名 或 /p 文本", ref command, 128))
+            if (command.Contains('\n'))
             {
-                slot.Command = command;
+                ImGui.AlignTextToFramePadding();
+                var lineCount = command.Count(c => c == '\n') + 1;
+                ImGui.TextUnformatted($"{command.Split('\n', 2)[0]} …(共 {lineCount} 行)");
+            }
+            else
+            {
+                var editButtonWidth = ImGui.CalcTextSize("编辑").X + ImGui.GetStyle().FramePadding.X * 2f + ImGui.GetStyle().ItemSpacing.X;
+                ImGui.SetNextItemWidth(MathF.Max(OmniTheme.Scale(120f), ImGui.GetContentRegionAvail().X - editButtonWidth));
+                if (OmniControls.InputTextWithHint("##command", "如 /ac 技能名 或 /p 文本", ref command, 128))
+                {
+                    slot.Command = command;
+                }
+
+                changed |= ImGui.IsItemDeactivatedAfterEdit();
             }
 
-            changed |= ImGui.IsItemDeactivatedAfterEdit();
+            ImGui.SameLine();
+            if (OmniControls.SmallButton("编辑##editCommand", false))
+            {
+                editingSlot = slot;
+                editBuffer = slot.Command;
+                ImGui.OpenPopup("##customHotbarCommandEditor");
+            }
+
+            OmniControls.HelpTooltip("展开多行编辑, 每行一条指令");
+
+            using (var popup = ImRaii.Popup("##customHotbarCommandEditor"))
+            {
+                if (popup)
+                {
+                    DrawCommandEditorPopup(slot, ref changed);
+                }
+            }
 
             ImGui.PopID();
         }
 
         return changed;
+    }
+
+    private static void DrawCommandEditorPopup(CustomHotbarSlot slot, ref bool changed)
+    {
+        if (editingSlot != slot)
+        {
+            return;
+        }
+
+        ImGui.TextUnformatted("执行指令 (每行一条, 点击图标时按顺序执行)");
+        var buffer = editBuffer;
+        if (ImGui.InputTextMultiline("##customHotbarCommandEditorInput", ref buffer, 2048, new Vector2(OmniTheme.Scale(460f), OmniTheme.Scale(150f))))
+        {
+            editBuffer = buffer;
+        }
+
+        if (OmniControls.SmallButton("确定##confirmCommand", false))
+        {
+            slot.Command = editBuffer.Trim();
+            editingSlot = null;
+            ImGui.CloseCurrentPopup();
+            changed = true;
+        }
+
+        ImGui.SameLine();
+        if (OmniControls.SmallButton("取消##cancelCommand", false))
+        {
+            editingSlot = null;
+            ImGui.CloseCurrentPopup();
+        }
     }
 
     private static bool DrawIconCell(CustomHotbarSlot slot, Action<Action<uint>> openIconBrowser)
