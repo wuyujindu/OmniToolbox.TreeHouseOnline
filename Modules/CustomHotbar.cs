@@ -791,7 +791,15 @@ internal static class CustomHotbarPanel
             if (command.Contains('\n'))
             {
                 ImGui.AlignTextToFramePadding();
-                var lineCount = command.Count(c => c == '\n') + 1;
+                var lineCount = 1;
+                foreach (var c in command)
+                {
+                    if (c == '\n')
+                    {
+                        lineCount++;
+                    }
+                }
+
                 ImGui.TextUnformatted($"{command.Split('\n', 2)[0]} …(共 {lineCount} 行)");
             }
             else
