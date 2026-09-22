@@ -902,7 +902,7 @@ internal static class CustomHotbarPanel
         ImGui.SameLine();
 
         var iconText = slot.IconID.ToString(CultureInfo.InvariantCulture);
-        ImGui.SetNextItemWidth(-1f);
+        ImGui.SetNextItemWidth(OmniTheme.Scale(60f));
         if (ImGui.InputText("##iconId", ref iconText, 16, ImGuiInputTextFlags.CharsDecimal) &&
             uint.TryParse(iconText, out var iconID))
         {
@@ -923,15 +923,14 @@ internal static class CustomHotbarPanel
             ImGui.GetWindowDrawList().AddRect(previewPosition, previewPosition + new Vector2(previewSize), 0xFF808080, OmniTheme.Scale(2f));
         }
 
-        if (OmniControls.SmallButton("选择##pickIcon", false))
+        ImGui.SameLine();
+        if (OmniControls.IconButton("##pickIcon", FontAwesomeIcon.Image, false, "打开图标浏览器"))
         {
             openIconBrowser(iconID => slot.IconID = iconID);
         }
 
-        OmniControls.HelpTooltip("打开图标浏览器");
-
         ImGui.SameLine();
-        if (OmniControls.SmallButton("对象##pickGameObjectIcon", false))
+        if (OmniControls.IconButton("##pickGameObjectIcon", FontAwesomeIcon.Search, false, "按游戏内名称从技能/物品/坐骑等对象获取图标"))
         {
             iconPickerSlot = slot;
             iconPickerCategory = 0;
@@ -940,8 +939,6 @@ internal static class CustomHotbarPanel
             iconPickerError = null;
             ImGui.OpenPopup("##customHotbarGameObjectIcon");
         }
-
-        OmniControls.HelpTooltip("按游戏内名称从技能/物品/坐骑等对象获取图标");
 
         using (var popup = ImRaii.Popup("##customHotbarGameObjectIcon"))
         {
