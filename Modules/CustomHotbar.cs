@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using Dalamud.Game.Command;
 using Dalamud.Interface;
 using OmniToolbox.Common.Module.Abstractions;
@@ -554,6 +555,26 @@ internal static class CustomHotbarPanel
     private static CustomHotbarSlot? editingSlot;
     private static string editBuffer = string.Empty;
 
+    private static readonly (string Label, string SheetName, string NameProperty)[] GameObjectCategories =
+    [
+        ("技能", "Action", "Name"),
+        ("情感动作", "Emote", "Name"),
+        ("物品", "Item", "Name"),
+        ("坐骑", "Mount", "Singular"),
+        ("宠物", "Companion", "Singular"),
+        ("通用技能", "GeneralAction", "Name")
+    ];
+
+    private static readonly object?[] gameObjectSheets = new object?[GameObjectCategories.Length];
+    private static readonly PropertyInfo?[] gameObjectNameProperties = new PropertyInfo?[GameObjectCategories.Length];
+    private static readonly PropertyInfo?[] gameObjectIconProperties = new PropertyInfo?[GameObjectCategories.Length];
+
+    private static CustomHotbarSlot? iconPickerSlot;
+    private static int iconPickerCategory;
+    private static string iconPickerName = string.Empty;
+    private static uint iconPickerResolvedIcon;
+    private static string? iconPickerError;
+
     public static bool Draw(CustomHotbarConfig config, Action<Action<uint>> openIconBrowser)
     {
         var changed = false;
@@ -907,7 +928,205 @@ internal static class CustomHotbarPanel
 
         OmniControls.HelpTooltip("打开图标浏览器");
 
+        ImGui.SameLine();
+        if (OmniControls.SmallButton("对象##pickGameObjectIcon", false))
+        {
+            iconPickerSlot = slot;
+            iconPickerCategory = 0;
+            iconPickerName = string.Empty;
+            iconPickerResolvedIcon = 0;
+            iconPickerError = null;
+            ImGui.OpenPopup("##customHotbarGameObjectIcon");
+        }
+
+        OmniControls.HelpTooltip("按游戏内名称从技能/物品/坐骑等对象获取图标");
+
+        using (var popup = ImRaii.Popup("##customHotbarGameObjectIcon"))
+        {
+            if (popup)
+            {
+                DrawGameObjectIconPopup(slot, ref changed);
+            }
+        }
+
         return changed;
+    }
+
+    private static void DrawGameObjectIconPopup(CustomHotbarSlot slot, ref bool changed)
+    {
+        if (iconPickerSlot != slot)
+        {
+            return;
+        }
+
+        ImGui.TextUnformatted("从游戏对象获取图标 (名称需与游戏内完全一致)");
+
+        if (OmniControls.BeginCombo("类别##customHotbarGameObjectCategory", GameObjectCategories[iconPickerCategory].Label, OmniTheme.Scale(110f)))
+        {
+            for (var i = 0; i < GameObjectCategories.Length; i++)
+            {
+                if (ImGui.Selectable($"{GameObjectCategories[i].Label}##customHotbarGameObjectCategory{i}", iconPickerCategory == i))
+                {
+                    iconPickerCategory = i;
+                    iconPickerResolvedIcon = 0;
+                    iconPickerError = null;
+                }
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.SameLine(0f, OmniTheme.Scale(8f));
+        var name = iconPickerName;
+        ImGui.SetNextItemWidth(OmniTheme.Scale(180f));
+        if (OmniControls.InputTextWithHint("##customHotbarGameObjectName", "如 铁壁 / 惊讶 / 蒸馏水", ref name, 64))
+        {
+            iconPickerName = name;
+            iconPickerResolvedIcon = 0;
+            iconPickerError = null;
+        }
+
+        ImGui.SameLine(0f, OmniTheme.Scale(8f));
+        if (OmniControls.SmallButton("解析##resolveGameObjectIcon", false))
+        {
+            if (TryResolveGameObjectIcon(iconPickerCategory, iconPickerName, out var resolved, out var error))
+            {
+                iconPickerResolvedIcon = resolved;
+                iconPickerError = null;
+            }
+            else
+            {
+                iconPickerResolvedIcon = 0;
+                iconPickerError = error;
+            }
+        }
+
+        if (iconPickerResolvedIcon > 0)
+        {
+            var rowStartY = ImGui.GetCursorPosY();
+            if (ImageHelper.GetGameIcon(iconPickerResolvedIcon) is { } texture)
+            {
+                ImGui.Image(texture.Handle, new Vector2(IconPreviewSize));
+                ImGui.SameLine();
+                ImGui.SetCursorPosY(rowStartY + MathF.Max(0f, (IconPreviewSize - ImGui.GetTextLineHeight()) * 0.5f));
+            }
+
+            ImGui.TextUnformatted($"图标ID: {iconPickerResolvedIcon}");
+        }
+        else if (iconPickerError != null)
+        {
+            ImGui.TextUnformatted(iconPickerError);
+        }
+
+        using (ImRaii.Disabled(iconPickerResolvedIcon == 0))
+        {
+            if (OmniControls.SmallButton("确定##confirmGameObjectIcon", false))
+            {
+                slot.IconID = iconPickerResolvedIcon;
+                iconPickerSlot = null;
+                ImGui.CloseCurrentPopup();
+                changed = true;
+            }
+        }
+
+        ImGui.SameLine();
+        if (OmniControls.SmallButton("取消##cancelGameObjectIcon", false))
+        {
+            iconPickerSlot = null;
+            ImGui.CloseCurrentPopup();
+        }
+    }
+
+    private static object? GetGameObjectSheet(int categoryIndex)
+    {
+        if (gameObjectSheets[categoryIndex] is { } cached)
+        {
+            return cached;
+        }
+
+        Assembly? luminaExcel = null;
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.GetName().Name == "Lumina.Excel")
+            {
+                luminaExcel = assembly;
+                break;
+            }
+        }
+
+        var sheetType = luminaExcel?.GetType($"Lumina.Excel.Sheets.{GameObjectCategories[categoryIndex].SheetName}");
+        if (sheetType == null)
+        {
+            return null;
+        }
+
+        var dataManager = DalamudServices.DataManager;
+        foreach (var method in dataManager.GetType().GetMethods())
+        {
+            if (method.Name != "GetExcelSheet" || !method.IsGenericMethodDefinition || method.GetParameters().Length != 2)
+            {
+                continue;
+            }
+
+            var sheet = method.MakeGenericMethod(sheetType).Invoke(dataManager, [null, null]);
+            if (sheet == null)
+            {
+                return null;
+            }
+
+            gameObjectSheets[categoryIndex] = sheet;
+            gameObjectNameProperties[categoryIndex] = sheetType.GetProperty(GameObjectCategories[categoryIndex].NameProperty);
+            gameObjectIconProperties[categoryIndex] = sheetType.GetProperty("Icon");
+            return sheet;
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveGameObjectIcon(int categoryIndex, string name, out uint iconID, out string error)
+    {
+        iconID = 0;
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0)
+        {
+            error = "请输入对象名称";
+            return false;
+        }
+
+        if (GetGameObjectSheet(categoryIndex) is not System.Collections.IEnumerable rows ||
+            gameObjectNameProperties[categoryIndex] is not { } nameProperty ||
+            gameObjectIconProperties[categoryIndex] is not { } iconProperty)
+        {
+            error = "游戏数据未就绪, 请稍后再试";
+            return false;
+        }
+
+        if (nameProperty.PropertyType.GetMethod("ExtractText", Type.EmptyTypes) is not { } extractText)
+        {
+            error = "游戏数据未就绪, 请稍后再试";
+            return false;
+        }
+
+        foreach (var row in rows)
+        {
+            var rowName = extractText.Invoke(nameProperty.GetValue(row), null) as string;
+            if (!string.Equals(rowName, trimmed, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (iconProperty.GetValue(row) is not { } iconValue)
+            {
+                continue;
+            }
+
+            iconID = Convert.ToUInt32(iconValue, CultureInfo.InvariantCulture);
+            error = string.Empty;
+            return iconID > 0;
+        }
+
+        error = $"未找到 \"{trimmed}\", 名称需与游戏内完全一致";
+        return false;
     }
 
     private static void DrawSlotReorderHandle(int barIndex, List<CustomHotbarSlot> slots, int index)
