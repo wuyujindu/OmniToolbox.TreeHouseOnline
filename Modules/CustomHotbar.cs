@@ -902,7 +902,7 @@ internal static class CustomHotbarPanel
         ImGui.SameLine();
 
         var iconText = slot.IconID.ToString(CultureInfo.InvariantCulture);
-        ImGui.SetNextItemWidth(OmniTheme.Scale(70f));
+        ImGui.SetNextItemWidth(-1f);
         if (ImGui.InputText("##iconId", ref iconText, 16, ImGuiInputTextFlags.CharsDecimal) &&
             uint.TryParse(iconText, out var iconID))
         {
@@ -923,7 +923,6 @@ internal static class CustomHotbarPanel
             ImGui.GetWindowDrawList().AddRect(previewPosition, previewPosition + new Vector2(previewSize), 0xFF808080, OmniTheme.Scale(2f));
         }
 
-        ImGui.SameLine();
         if (OmniControls.SmallButton("选择##pickIcon", false))
         {
             openIconBrowser(iconID => slot.IconID = iconID);
