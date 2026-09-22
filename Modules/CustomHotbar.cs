@@ -828,7 +828,8 @@ internal static class CustomHotbarPanel
             }
             else
             {
-                var editButtonWidth = ImGui.CalcTextSize("编辑").X + ImGui.GetStyle().FramePadding.X * 2f + ImGui.GetStyle().ItemSpacing.X;
+                var style = ImGui.GetStyle();
+                var editButtonWidth = ImGui.CalcTextSize("编辑").X + style.FramePadding.X * 2f + style.ItemSpacing.X + style.CellPadding.X * 2f + style.ScrollbarSize;
                 ImGui.SetNextItemWidth(MathF.Max(OmniTheme.Scale(120f), ImGui.GetContentRegionAvail().X - editButtonWidth));
                 if (OmniControls.InputTextWithHint("##command", "如 /ac 技能名 或 /p 文本", ref command, 128))
                 {
