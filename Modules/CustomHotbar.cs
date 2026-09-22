@@ -1,7 +1,7 @@
 using System.Globalization;
-using System.Reflection;
 using Dalamud.Game.Command;
 using Dalamud.Interface;
+using Lumina.Excel;
 using OmniToolbox.Common.Module.Abstractions;
 using OmniToolbox.Common.Module.Enums;
 using OmniToolbox.Common.Module.Models;
@@ -9,7 +9,14 @@ using OmniToolbox.Host;
 using OmniToolbox.Lifecycle;
 using OmniToolbox.UI.Theme;
 using OmenTools;
+using OmenTools.Interop.Game.Lumina;
 using OmenTools.OmenService;
+using LuminaAction = Lumina.Excel.Sheets.Action;
+using LuminaCompanion = Lumina.Excel.Sheets.Companion;
+using LuminaEmote = Lumina.Excel.Sheets.Emote;
+using LuminaGeneralAction = Lumina.Excel.Sheets.GeneralAction;
+using LuminaItem = Lumina.Excel.Sheets.Item;
+using LuminaMount = Lumina.Excel.Sheets.Mount;
 
 namespace OmniToolbox.TreeHouseOnline;
 
@@ -555,19 +562,15 @@ internal static class CustomHotbarPanel
     private static CustomHotbarSlot? editingSlot;
     private static string editBuffer = string.Empty;
 
-    private static readonly (string Label, string SheetName, string NameProperty)[] GameObjectCategories =
+    private static readonly string[] GameObjectCategoryLabels =
     [
-        ("技能", "Action", "Name"),
-        ("情感动作", "Emote", "Name"),
-        ("物品", "Item", "Name"),
-        ("坐骑", "Mount", "Singular"),
-        ("宠物", "Companion", "Singular"),
-        ("通用技能", "GeneralAction", "Name")
+        "技能",
+        "情感动作",
+        "物品",
+        "坐骑",
+        "宠物",
+        "通用技能"
     ];
-
-    private static readonly object?[] gameObjectSheets = new object?[GameObjectCategories.Length];
-    private static readonly PropertyInfo?[] gameObjectNameProperties = new PropertyInfo?[GameObjectCategories.Length];
-    private static readonly PropertyInfo?[] gameObjectIconProperties = new PropertyInfo?[GameObjectCategories.Length];
 
     private static CustomHotbarSlot? iconPickerSlot;
     private static int iconPickerCategory;
@@ -961,11 +964,11 @@ internal static class CustomHotbarPanel
 
         ImGui.TextUnformatted("从游戏对象获取图标 (名称需与游戏内完全一致)");
 
-        if (OmniControls.BeginCombo("类别##customHotbarGameObjectCategory", GameObjectCategories[iconPickerCategory].Label, OmniTheme.Scale(110f)))
+        if (OmniControls.BeginCombo("类别##customHotbarGameObjectCategory", GameObjectCategoryLabels[iconPickerCategory], OmniTheme.Scale(110f)))
         {
-            for (var i = 0; i < GameObjectCategories.Length; i++)
+            for (var i = 0; i < GameObjectCategoryLabels.Length; i++)
             {
-                if (ImGui.Selectable($"{GameObjectCategories[i].Label}##customHotbarGameObjectCategory{i}", iconPickerCategory == i))
+                if (ImGui.Selectable($"{GameObjectCategoryLabels[i]}##customHotbarGameObjectCategory{i}", iconPickerCategory == i))
                 {
                     iconPickerCategory = i;
                     iconPickerResolvedIcon = 0;
@@ -1037,52 +1040,6 @@ internal static class CustomHotbarPanel
         }
     }
 
-    private static object? GetGameObjectSheet(int categoryIndex)
-    {
-        if (gameObjectSheets[categoryIndex] is { } cached)
-        {
-            return cached;
-        }
-
-        Assembly? luminaExcel = null;
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (assembly.GetName().Name == "Lumina.Excel")
-            {
-                luminaExcel = assembly;
-                break;
-            }
-        }
-
-        var sheetType = luminaExcel?.GetType($"Lumina.Excel.Sheets.{GameObjectCategories[categoryIndex].SheetName}");
-        if (sheetType == null)
-        {
-            return null;
-        }
-
-        var dataManager = DalamudServices.DataManager;
-        foreach (var method in dataManager.GetType().GetMethods())
-        {
-            if (method.Name != "GetExcelSheet" || !method.IsGenericMethodDefinition || method.GetParameters().Length != 2)
-            {
-                continue;
-            }
-
-            var sheet = method.MakeGenericMethod(sheetType).Invoke(dataManager, [null, null]);
-            if (sheet == null)
-            {
-                return null;
-            }
-
-            gameObjectSheets[categoryIndex] = sheet;
-            gameObjectNameProperties[categoryIndex] = sheetType.GetProperty(GameObjectCategories[categoryIndex].NameProperty);
-            gameObjectIconProperties[categoryIndex] = sheetType.GetProperty("Icon");
-            return sheet;
-        }
-
-        return null;
-    }
-
     private static bool TryResolveGameObjectIcon(int categoryIndex, string name, out uint iconID, out string error)
     {
         iconID = 0;
@@ -1093,39 +1050,35 @@ internal static class CustomHotbarPanel
             return false;
         }
 
-        if (GetGameObjectSheet(categoryIndex) is not System.Collections.IEnumerable rows ||
-            gameObjectNameProperties[categoryIndex] is not { } nameProperty ||
-            gameObjectIconProperties[categoryIndex] is not { } iconProperty)
+        var found = categoryIndex switch
         {
-            error = "游戏数据未就绪, 请稍后再试";
-            return false;
-        }
+            0 => TryFindIcon(LuminaGetter.Get<LuminaAction>(), trimmed, row => row.Name.ExtractText(), row => row.Icon, out iconID),
+            1 => TryFindIcon(LuminaGetter.Get<LuminaEmote>(), trimmed, row => row.Name.ExtractText(), row => row.Icon, out iconID),
+            2 => TryFindIcon(LuminaGetter.Get<LuminaItem>(), trimmed, row => row.Name.ExtractText(), row => row.Icon, out iconID),
+            3 => TryFindIcon(LuminaGetter.Get<LuminaMount>(), trimmed, row => row.Singular.ExtractText(), row => row.Icon, out iconID),
+            4 => TryFindIcon(LuminaGetter.Get<LuminaCompanion>(), trimmed, row => row.Singular.ExtractText(), row => row.Icon, out iconID),
+            _ => TryFindIcon(LuminaGetter.Get<LuminaGeneralAction>(), trimmed, row => row.Name.ExtractText(), row => (uint)row.Icon, out iconID)
+        };
 
-        if (nameProperty.PropertyType.GetMethod("ExtractText", Type.EmptyTypes) is not { } extractText)
-        {
-            error = "游戏数据未就绪, 请稍后再试";
-            return false;
-        }
+        error = found ? string.Empty : $"未找到 \"{trimmed}\", 名称需与游戏内完全一致";
+        return found;
+    }
 
-        foreach (var row in rows)
+    private static bool TryFindIcon<T>(ExcelSheet<T> sheet, string name, Func<T, string> getName, Func<T, uint> getIcon, out uint iconID)
+        where T : struct, IExcelRow<T>
+    {
+        foreach (var row in sheet)
         {
-            var rowName = extractText.Invoke(nameProperty.GetValue(row), null) as string;
-            if (!string.Equals(rowName, trimmed, StringComparison.Ordinal))
+            if (!string.Equals(getName(row), name, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (iconProperty.GetValue(row) is not { } iconValue)
-            {
-                continue;
-            }
-
-            iconID = Convert.ToUInt32(iconValue, CultureInfo.InvariantCulture);
-            error = string.Empty;
+            iconID = getIcon(row);
             return iconID > 0;
         }
 
-        error = $"未找到 \"{trimmed}\", 名称需与游戏内完全一致";
+        iconID = 0;
         return false;
     }
 
