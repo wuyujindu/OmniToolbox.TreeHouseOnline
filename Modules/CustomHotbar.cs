@@ -463,16 +463,28 @@ internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
 
     private void UpdateWindowGeometry(CustomHotbarBarConfig bar)
     {
-        if (bar.Locked)
+        var position = ImGui.GetWindowPos();
+        if (Vector2.DistanceSquared(position, bar.Position) <= 0.25f)
         {
             return;
         }
 
-        var position = ImGui.GetWindowPos();
-        if (Vector2.DistanceSquared(position, bar.Position) > 0.25f)
+        var viewportSize = ImGui.GetMainViewport().WorkSize;
+        if (viewportSize.X < 8f || viewportSize.Y < 8f)
+        {
+            return;
+        }
+
+        var userDragging = !bar.Locked &&
+                           ImGui.IsWindowFocused() &&
+                           ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        if (userDragging)
         {
             bar.Position = position;
+            return;
         }
+
+        ImGui.SetWindowPos(bar.Position);
     }
 
     private void UpdateSlotDrag()
