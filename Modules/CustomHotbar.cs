@@ -311,6 +311,7 @@ public sealed class CustomHotbarBarConfig
     public bool Visible { get; set; } = true;
     public bool HideEmptySlots { get; set; }
     public Vector2 Position { get; set; } = new(400f, 300f);
+    public Vector2 PositionRatio { get; set; } = new(-1f, -1f);
     public float GlobalScale { get; set; } = 1f;
     public float Opacity { get; set; } = 0.85f;
     public bool Locked { get; set; }
@@ -463,28 +464,44 @@ internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
 
     private void UpdateWindowGeometry(CustomHotbarBarConfig bar)
     {
-        var position = ImGui.GetWindowPos();
-        if (Vector2.DistanceSquared(position, bar.Position) <= 0.25f)
-        {
-            return;
-        }
-
-        var viewportSize = ImGui.GetMainViewport().WorkSize;
+        var viewport = ImGui.GetMainViewport();
+        var viewportSize = viewport.WorkSize;
         if (viewportSize.X < 8f || viewportSize.Y < 8f)
         {
             return;
         }
 
+        var viewportPos = viewport.WorkPos;
+        if (bar.PositionRatio.X < 0f || bar.PositionRatio.Y < 0f)
+        {
+            bar.PositionRatio = new Vector2(
+                (bar.Position.X - viewportPos.X) / viewportSize.X,
+                (bar.Position.Y - viewportPos.Y) / viewportSize.Y);
+        }
+
+        var position = ImGui.GetWindowPos();
         var userDragging = !bar.Locked &&
                            ImGui.IsWindowFocused() &&
                            ImGui.IsMouseDown(ImGuiMouseButton.Left);
         if (userDragging)
         {
             bar.Position = position;
+            bar.PositionRatio = new Vector2(
+                (position.X - viewportPos.X) / viewportSize.X,
+                (position.Y - viewportPos.Y) / viewportSize.Y);
             return;
         }
 
-        ImGui.SetWindowPos(bar.Position);
+        var windowSize = ImGui.GetWindowSize();
+        var target = Vector2.Clamp(
+            viewportPos + bar.PositionRatio * viewportSize,
+            viewportPos,
+            viewportPos + Vector2.Max(Vector2.Zero, viewportSize - windowSize));
+        if (Vector2.DistanceSquared(position, target) > 0.25f)
+        {
+            bar.Position = target;
+            ImGui.SetWindowPos(target);
+        }
     }
 
     private void UpdateSlotDrag()
