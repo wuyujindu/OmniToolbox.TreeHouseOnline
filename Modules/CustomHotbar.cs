@@ -31,12 +31,12 @@ public sealed class CustomHotbar : ModuleBase
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("切换指定热键栏的显示/隐藏（名称或序号）", "/omni hide 1")]
+        Commands = [new ModuleCommand("切换指定热键栏的显示/隐藏（名称或序号）", "/omni customhotbar toggle 1")]
     };
 
     public const int SlotCount = 12;
     private const string STANDALONE_COMMAND = "/customhotbar";
-    private const string HIDE_USAGE = "/omni hide <名称或序号>";
+    private const string TOGGLE_USAGE = "/omni customhotbar toggle <名称或序号>";
 
     private CustomHotbarConfig config = new();
     private CustomHotbarOverlay? overlay;
@@ -70,7 +70,7 @@ public sealed class CustomHotbar : ModuleBase
         {
             DalamudServices.CommandManager.AddHandler(STANDALONE_COMMAND, new CommandInfo(OnCommand)
             {
-                HelpMessage = "切换热键栏显示/隐藏: /customhotbar hide <名称或序号>"
+                HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
             });
             lifetime.Add(() => DalamudServices.CommandManager.RemoveHandler(STANDALONE_COMMAND));
 
@@ -106,20 +106,28 @@ public sealed class CustomHotbar : ModuleBase
         lifetime?.Dispose();
     }
 
-    public override bool TryHandleCommand(string arguments) => ToggleBarVisibility(arguments);
+    public override bool TryHandleCommand(string arguments)
+    {
+        var parts = arguments.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0 || !string.Equals(parts[0], "toggle", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return ToggleBarVisibility(parts.Length > 1 ? parts[1] : string.Empty);
+    }
 
     public override bool TryHandleCommand(string command, string arguments)
     {
-        return string.Equals(command, "hide", StringComparison.OrdinalIgnoreCase) &&
-               ToggleBarVisibility(arguments);
+        return string.Equals(command, "customhotbar", StringComparison.OrdinalIgnoreCase) &&
+               TryHandleCommand(arguments);
     }
 
     private void OnCommand(string command, string args)
     {
-        var parts = args.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || !TryHandleCommand(parts[0], parts.Length > 1 ? parts[1] : string.Empty))
+        if (!TryHandleCommand(args))
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {HIDE_USAGE}");
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {TOGGLE_USAGE}");
         }
     }
 
@@ -128,7 +136,7 @@ public sealed class CustomHotbar : ModuleBase
         var argument = arguments.Trim();
         if (argument.Length == 0)
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {HIDE_USAGE}");
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {TOGGLE_USAGE}");
             return true;
         }
 
@@ -150,7 +158,7 @@ public sealed class CustomHotbar : ModuleBase
 
         if (target == null)
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: {HIDE_USAGE}");
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: {TOGGLE_USAGE}");
             return true;
         }
 
