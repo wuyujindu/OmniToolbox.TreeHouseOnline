@@ -26,13 +26,13 @@ Omni 读取默认分支根目录的 `TreeHouseModules.json`，自动下载并安
 启用模块后，用以下指令切换指定热键栏的显示/隐藏，序号从 `1` 开始，也可填写完整名称（允许空格）：
 
 ```text
-/omni CustomHotbar hide 1
-/omni CustomHotbar hide 热键栏 1
+/omni hide 1
+/omni hide 热键栏 1
 /customhotbar hide 1
 ```
 
-`hide` 替代原来的 `toggle` 子指令；不带参数的 `/omni CustomHotbar` 仍交由宿主切换模块开关。
-模块指令接口需要 Omni `1.1.3.0` 或更新版本。
+`hide` 是此模块声明的功能命令，直接放在 `/omni` 后；后续参数仅填写热键栏名称或序号。
+模块需处于启用状态，使用 Omni `1.1.7.2` 或更新版本。
 
 在模块设置中点击“导出当前热键栏”或“导出全部”，将 JSON 配置复制到剪贴板。
 复制配置后点击“从剪贴板导入”，会追加为新热键栏并选中第一组新栏；现有热键栏保留，同名时自动加上导入后缀。

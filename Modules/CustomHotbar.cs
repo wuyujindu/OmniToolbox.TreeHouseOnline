@@ -31,12 +31,12 @@ public sealed class CustomHotbar : ModuleBase
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("/omni CustomHotbar hide <热键栏名称/序号> → 切换指定热键栏的显示/隐藏", "/omni CustomHotbar hide 1")]
+        Commands = [new ModuleCommand("切换指定热键栏的显示/隐藏（名称或序号）", "/omni hide 1")]
     };
 
     public const int SlotCount = 12;
     private const string STANDALONE_COMMAND = "/customhotbar";
-    private const string HIDE_USAGE = "/omni CustomHotbar hide <名称或序号>";
+    private const string HIDE_USAGE = "/omni hide <名称或序号>";
 
     private CustomHotbarConfig config = new();
     private CustomHotbarOverlay? overlay;
@@ -106,31 +106,32 @@ public sealed class CustomHotbar : ModuleBase
         lifetime?.Dispose();
     }
 
-    public override bool TryHandleCommand(string arguments) => HandleHideCommand(arguments);
+    public override bool TryHandleCommand(string arguments) => ToggleBarVisibility(arguments);
+
+    public override bool TryHandleCommand(string command, string arguments)
+    {
+        return string.Equals(command, "hide", StringComparison.OrdinalIgnoreCase) &&
+               ToggleBarVisibility(arguments);
+    }
 
     private void OnCommand(string command, string args)
     {
-        if (!HandleHideCommand(args))
+        var parts = args.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0 || !TryHandleCommand(parts[0], parts.Length > 1 ? parts[1] : string.Empty))
         {
             DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {HIDE_USAGE}");
         }
     }
 
-    private bool HandleHideCommand(string args)
+    private bool ToggleBarVisibility(string arguments)
     {
-        var parts = args.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || !string.Equals(parts[0], "hide", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (parts.Length < 2)
+        var argument = arguments.Trim();
+        if (argument.Length == 0)
         {
             DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {HIDE_USAGE}");
             return true;
         }
 
-        var argument = parts[1].Trim();
         CustomHotbarBarConfig? target = null;
         foreach (var bar in config.Bars)
         {
