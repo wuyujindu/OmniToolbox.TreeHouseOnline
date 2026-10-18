@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Dalamud.Game.Command;
 using Dalamud.Interface;
 using Lumina.Excel;
@@ -29,11 +30,12 @@ public sealed class CustomHotbar : ModuleBase
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("/omni CustomHotbar toggle <热键栏名称/序号> → 切换指定热键栏的显示/隐藏", "/omni CustomHotbar toggle 1")]
+        Commands = [new ModuleCommand("/omni CustomHotbar hide <热键栏名称/序号> → 切换指定热键栏的显示/隐藏", "/omni CustomHotbar hide 1")]
     };
 
     public const int SlotCount = 12;
-    private const string ToggleCommand = "/customhotbar";
+    private const string STANDALONE_COMMAND = "/customhotbar";
+    private const string HIDE_USAGE = "/omni CustomHotbar hide <名称或序号>";
 
     private CustomHotbarConfig config = new();
     private CustomHotbarOverlay? overlay;
@@ -65,11 +67,11 @@ public sealed class CustomHotbar : ModuleBase
         var lifetime = new FeatureLifetime();
         try
         {
-            DalamudServices.CommandManager.AddHandler(ToggleCommand, new CommandInfo(OnCommand)
+            DalamudServices.CommandManager.AddHandler(STANDALONE_COMMAND, new CommandInfo(OnCommand)
             {
-                HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
+                HelpMessage = "切换热键栏显示/隐藏: /customhotbar hide <名称或序号>"
             });
-            lifetime.Add(() => DalamudServices.CommandManager.RemoveHandler(ToggleCommand));
+            lifetime.Add(() => DalamudServices.CommandManager.RemoveHandler(STANDALONE_COMMAND));
 
             var created = new CustomHotbarOverlay(config);
             var windowManager = WindowManager.Instance();
@@ -103,36 +105,31 @@ public sealed class CustomHotbar : ModuleBase
         lifetime?.Dispose();
     }
 
-    public override bool TryHandleCommand(string arguments)
+    public override bool TryHandleCommand(string arguments) => HandleHideCommand(arguments);
+
+    private void OnCommand(string command, string args)
     {
-        if (string.IsNullOrWhiteSpace(arguments))
+        if (!HandleHideCommand(args))
+        {
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {HIDE_USAGE}");
+        }
+    }
+
+    private bool HandleHideCommand(string args)
+    {
+        var parts = args.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0 || !string.Equals(parts[0], "hide", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        ToggleBar(arguments);
-        return true;
-    }
-
-    private void OnCommand(string command, string args) => ToggleBar(args);
-
-    private void ToggleBar(string args)
-    {
-        var argument = args.Trim();
-        if (argument.StartsWith("toggle", StringComparison.OrdinalIgnoreCase))
+        if (parts.Length < 2)
         {
-            argument = argument[6..].Trim();
-        }
-        else if (argument.StartsWith("切换", StringComparison.Ordinal))
-        {
-            argument = argument[2..].Trim();
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {HIDE_USAGE}");
+            return true;
         }
 
-        if (argument.Length == 0)
-        {
-            return;
-        }
-
+        var argument = parts[1].Trim();
         CustomHotbarBarConfig? target = null;
         foreach (var bar in config.Bars)
         {
@@ -151,11 +148,12 @@ public sealed class CustomHotbar : ModuleBase
 
         if (target == null)
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: /omni CustomHotbar toggle <名称或序号>");
-            return;
+            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: {HIDE_USAGE}");
+            return true;
         }
 
         target.Visible = !target.Visible;
+        return true;
     }
 
     internal bool NormalizeConfig()
@@ -328,6 +326,86 @@ public sealed class CustomHotbarBarConfig
 public sealed class CustomHotbarConfig
 {
     public List<CustomHotbarBarConfig> Bars { get; set; } = [];
+}
+
+internal static class CustomHotbarSharing
+{
+    private const int MAX_CLIPBOARD_LENGTH = 4 * 1024 * 1024;
+
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        IncludeFields = true,
+        IgnoreReadOnlyProperties = true,
+        WriteIndented = true
+    };
+
+    public static string Export(IEnumerable<CustomHotbarBarConfig> bars)
+    {
+        var text = JsonSerializer.Serialize(new CustomHotbarConfig { Bars = bars.ToList() }, SerializerOptions);
+        if (text.Length > MAX_CLIPBOARD_LENGTH)
+        {
+            throw new JsonException("配置过大，请分别导出热键栏");
+        }
+
+        return text;
+    }
+
+    public static bool TryImport(string text, CustomHotbarConfig config, out int count, out string error)
+    {
+        count = 0;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(text) || text.Length > MAX_CLIPBOARD_LENGTH)
+        {
+            error = "剪贴板为空或配置文本过长";
+            return false;
+        }
+
+        CustomHotbarConfig? imported;
+        try
+        {
+            imported = JsonSerializer.Deserialize<CustomHotbarConfig>(text, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            error = "剪贴板不是有效的热键栏配置";
+            return false;
+        }
+
+        if (imported?.Bars == null || imported.Bars.Count == 0)
+        {
+            error = "配置中没有热键栏";
+            return false;
+        }
+
+        var names = new HashSet<string>(config.Bars.Select(bar => bar.Name), StringComparer.Ordinal);
+        foreach (var bar in imported.Bars)
+        {
+            if (bar == null || bar.Slots?.Any(slot => slot == null) == true ||
+                bar.Slots?.Count > CustomHotbar.SlotCount ||
+                !float.IsFinite(bar.GlobalScale) || !float.IsFinite(bar.Opacity) ||
+                !float.IsFinite(bar.Position.X) || !float.IsFinite(bar.Position.Y) ||
+                !float.IsFinite(bar.PositionRatio.X) || !float.IsFinite(bar.PositionRatio.Y))
+            {
+                error = "配置含有无效热键栏、格子或数值（每栏最多 12 格）";
+                return false;
+            }
+
+            CustomHotbar.NormalizeBar(bar);
+            var baseName = string.IsNullOrWhiteSpace(bar.Name) ? "导入的热键栏" : bar.Name.Trim();
+            var name = baseName;
+            var suffix = 1;
+            while (!names.Add(name))
+            {
+                name = $"{baseName} (导入 {suffix++})";
+            }
+
+            bar.Name = name;
+        }
+
+        config.Bars.AddRange(imported.Bars);
+        count = imported.Bars.Count;
+        return true;
+    }
 }
 
 internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
@@ -590,6 +668,7 @@ internal static class CustomHotbarPanel
     private static bool reorderDirty;
     private static CustomHotbarSlot? editingSlot;
     private static string editBuffer = string.Empty;
+    private static string transferMessage = string.Empty;
 
     private static readonly string[] GameObjectCategoryLabels =
     [
@@ -612,6 +691,7 @@ internal static class CustomHotbarPanel
         var changed = false;
 
         changed |= DrawBarSelector(config);
+        changed |= DrawTransferControls(config);
 
         if (config.Bars.Count == 0)
         {
@@ -676,6 +756,62 @@ internal static class CustomHotbarPanel
         }
 
         return changed;
+    }
+
+    private static bool DrawTransferControls(CustomHotbarConfig config)
+    {
+        var changed = false;
+        using (ImRaii.Disabled(config.Bars.Count == 0))
+        {
+            if (OmniControls.SmallButton("导出当前热键栏##customHotbarExportCurrent", false))
+            {
+                var index = Math.Clamp(selectedBarIndex, 0, config.Bars.Count - 1);
+                ExportToClipboard([config.Bars[index]]);
+            }
+
+            ImGui.SameLine();
+            if (OmniControls.SmallButton("导出全部##customHotbarExportAll", false))
+            {
+                ExportToClipboard(config.Bars);
+            }
+        }
+
+        ImGui.SameLine();
+        if (OmniControls.SmallButton("从剪贴板导入##customHotbarImport", false))
+        {
+            var firstImportedIndex = config.Bars.Count;
+            if (CustomHotbarSharing.TryImport(ImGui.GetClipboardText(), config, out var count, out var error))
+            {
+                selectedBarIndex = firstImportedIndex;
+                transferMessage = $"已追加导入 {count} 个热键栏";
+                changed = true;
+            }
+            else
+            {
+                transferMessage = $"导入失败：{error}";
+            }
+        }
+
+        OmniControls.HelpTooltip("读取剪贴板中的热键栏配置并追加，同名热键栏自动重命名");
+        if (transferMessage.Length > 0)
+        {
+            ImGui.TextUnformatted(transferMessage);
+        }
+
+        return changed;
+    }
+
+    private static void ExportToClipboard(IEnumerable<CustomHotbarBarConfig> bars)
+    {
+        try
+        {
+            ImGui.SetClipboardText(CustomHotbarSharing.Export(bars));
+            transferMessage = "已复制热键栏配置到剪贴板";
+        }
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
+        {
+            transferMessage = "导出失败：配置过大或含有无效数值";
+        }
     }
 
     private static bool DrawBarEditor(CustomHotbarBarConfig bar, int barIndex, Action<Action<uint>> openIconBrowser)
