@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using Dalamud.Game.Command;
 using Dalamud.Interface;
+using Dalamud.Plugin.Services;
 using Lumina.Excel;
 using OmniToolbox.Common.Module.Abstractions;
 using OmniToolbox.Common.Module.Enums;
@@ -36,6 +37,7 @@ public sealed class CustomHotbar : ModuleBase
 
     public const int SlotCount = 12;
     private const string STANDALONE_COMMAND = "/customhotbar";
+    private const string OMNI_COMMAND = "/omni";
     private const string TOGGLE_USAGE = "/omni customhotbar toggle <名称或序号>";
 
     private CustomHotbarConfig config = new();
@@ -68,11 +70,7 @@ public sealed class CustomHotbar : ModuleBase
         var lifetime = new FeatureLifetime();
         try
         {
-            DalamudServices.CommandManager.AddHandler(STANDALONE_COMMAND, new CommandInfo(OnCommand)
-            {
-                HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
-            });
-            lifetime.Add(() => DalamudServices.CommandManager.RemoveHandler(STANDALONE_COMMAND));
+            RegisterCommands(DalamudServices.CommandManager, DalamudServices.Framework, lifetime);
 
             var created = new CustomHotbarOverlay(config);
             var windowManager = WindowManager.Instance();
@@ -106,6 +104,136 @@ public sealed class CustomHotbar : ModuleBase
         lifetime?.Dispose();
     }
 
+    internal void RegisterCommands(ICommandManager commandManager, IFramework framework, FeatureLifetime lifetime)
+    {
+        Action<string, string>? featureHandler = OnCommand;
+        var standalone = new CommandInfo((command, arguments) => featureHandler?.Invoke(command, arguments))
+        {
+            HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
+        };
+        if (!commandManager.AddHandler(STANDALONE_COMMAND, standalone))
+        {
+            throw new InvalidOperationException("无法注册 /customhotbar：该指令已被占用");
+        }
+
+        lifetime.Add(() =>
+        {
+            featureHandler = null;
+            if (commandManager.Commands.TryGetValue(STANDALONE_COMMAND, out var current) &&
+                ReferenceEquals(current, standalone) && !commandManager.RemoveHandler(STANDALONE_COMMAND))
+            {
+                throw new InvalidOperationException("无法注销 /customhotbar 指令");
+            }
+        });
+
+        var attached = false;
+        void AttachOmniCommand(IFramework sender)
+        {
+            if (attached || featureHandler == null ||
+                !commandManager.Commands.TryGetValue(OMNI_COMMAND, out var hostCommand))
+            {
+                return;
+            }
+
+            framework.Update -= WaitForOmniCommand;
+            if (hostCommand is not CommandInfo originalCommand)
+            {
+                throw new InvalidOperationException("无法接入 /omni：宿主指令类型不支持恢复");
+            }
+
+            // 在线模块的 Commands 只展示帮助；宿主没有为自定义功能名提供注册入口。
+            var registered = new CommandInfo((command, arguments) =>
+            {
+                var handler = featureHandler;
+                var parts = arguments.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (handler == null || parts.Length == 0 ||
+                    !string.Equals(parts[0], "customhotbar", StringComparison.OrdinalIgnoreCase))
+                {
+                    hostCommand.Handler(command, arguments);
+                    return;
+                }
+
+                handler(parts[0], parts.Length > 1 ? parts[1] : string.Empty);
+            })
+            {
+                HelpMessage = hostCommand.HelpMessage,
+                ShowInHelp = hostCommand.ShowInHelp,
+                DisplayOrder = hostCommand.DisplayOrder,
+                AllowedInMacros = hostCommand.AllowedInMacros
+            };
+
+            if (!commandManager.RemoveHandler(OMNI_COMMAND))
+            {
+                throw new InvalidOperationException("无法接入 /omni：当前命令服务无法移除宿主处理器");
+            }
+
+            try
+            {
+                if (!commandManager.AddHandler(OMNI_COMMAND, registered))
+                {
+                    throw new InvalidOperationException("无法注册 /omni customhotbar 指令");
+                }
+            }
+            catch (Exception exception)
+            {
+                if (!commandManager.Commands.ContainsKey(OMNI_COMMAND) &&
+                    !commandManager.AddHandler(OMNI_COMMAND, originalCommand))
+                {
+                    throw new InvalidOperationException("注册热键栏指令失败，且无法恢复原 /omni 指令", exception);
+                }
+
+                throw;
+            }
+
+            attached = true;
+            lifetime.Add(() =>
+            {
+                featureHandler = null;
+                if (!commandManager.Commands.TryGetValue(OMNI_COMMAND, out var current) ||
+                    !ReferenceEquals(current, registered))
+                {
+                    return;
+                }
+
+                if (!commandManager.RemoveHandler(OMNI_COMMAND) ||
+                    !commandManager.AddHandler(OMNI_COMMAND, originalCommand))
+                {
+                    throw new InvalidOperationException("无法恢复原 /omni 指令");
+                }
+            });
+        }
+
+        void WaitForOmniCommand(IFramework sender)
+        {
+            try
+            {
+                AttachOmniCommand(sender);
+            }
+            catch
+            {
+                if (IsEnabled)
+                {
+                    SetEnabled(false);
+                }
+                else
+                {
+                    lifetime.Dispose();
+                }
+
+                throw;
+            }
+        }
+
+        // 宿主可能在启用在线模块之后才注册主指令，等主指令出现再接入。
+        framework.Update += WaitForOmniCommand;
+        lifetime.Add(() =>
+        {
+            featureHandler = null;
+            framework.Update -= WaitForOmniCommand;
+        });
+        AttachOmniCommand(framework);
+    }
+
     public override bool TryHandleCommand(string arguments)
     {
         var parts = arguments.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
@@ -125,7 +253,7 @@ public sealed class CustomHotbar : ModuleBase
 
     private void OnCommand(string command, string args)
     {
-        if (!TryHandleCommand(args))
+        if (!TryHandleCommand("customhotbar", args))
         {
             DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {TOGGLE_USAGE}");
         }
