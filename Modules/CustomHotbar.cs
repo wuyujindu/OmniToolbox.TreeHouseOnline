@@ -1,16 +1,23 @@
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Command;
 using Dalamud.Interface;
-using Dalamud.Plugin.Services;
+using Dalamud.Interface.Utility.Raii;
 using Lumina.Excel;
+using OmniToolbox.Commands;
 using OmniToolbox.Common.Module.Abstractions;
 using OmniToolbox.Common.Module.Enums;
 using OmniToolbox.Common.Module.Models;
 using OmniToolbox.Host;
-using OmniToolbox.Lifecycle;
+using OmniToolbox.UI;
+using OmniToolbox.UI.Controls;
 using OmniToolbox.UI.Theme;
+using TreeTools.Lifecycle;
 using OmenTools;
 using OmenTools.Interop.Game.Lumina;
 using OmenTools.OmenService;
@@ -23,32 +30,100 @@ using LuminaMount = Lumina.Excel.Sheets.Mount;
 
 namespace OmniToolbox.TreeHouseOnline;
 
-public sealed class CustomHotbar : ModuleBase
+[ModuleApiVersion(1)]
+public sealed class CustomHotbar : OmniModuleBase
 {
     public override ModuleInfo Info { get; } = new()
     {
-        Title = "自定义热键栏",
-        Description = "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令",
         Category = ModuleCategory.Interface,
         Author = "WYJD",
         SupportUrls = ["https://github.com/wuyujindu"],
-        Commands = [new ModuleCommand("切换指定热键栏的显示/隐藏（名称或序号）", "/omni customhotbar toggle 1")]
+        Commands = [new("ToggleBar", OmniCommandCatalog.FormatModule(nameof(CustomHotbar), "toggle 1"))]
     };
+
+    public override ModuleLocalization Localization { get; } = ModuleLocalization.Create(
+        new Dictionary<string, string>
+        {
+            ["Title"] = "自定义热键栏",
+            ["Description"] = "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令",
+            ["ToggleBar"] = "切换指定热键栏的显示/隐藏（名称或序号）",
+            ["StandaloneHelp"] = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>",
+            ["CommandUsage"] = "[自定义热键栏] 用法: {0} <名称或序号>",
+            ["BarNotFound"] = "[自定义热键栏] 未找到热键栏 \"{0}\", 用法: {1} <名称或序号>",
+            ["RegisterCommandFailed"] = "无法注册 /customhotbar：该指令已被占用",
+            ["UnregisterCommandFailed"] = "无法注销 /customhotbar 指令",
+            ["DefaultBarName"] = "热键栏 {0}",
+            ["ImportedBarName"] = "导入的热键栏",
+            ["ImportedNameSuffix"] = "{0} (导入 {1})",
+            ["ImportEmpty"] = "剪贴板为空或配置文本过长",
+            ["ImportInvalidJson"] = "剪贴板不是有效的热键栏配置",
+            ["ImportNoBars"] = "配置中没有热键栏",
+            ["ImportInvalidBar"] = "配置含有无效热键栏、格子或数值（每栏最多 12 格）",
+            ["Imported"] = "已追加导入 {0} 个热键栏",
+            ["ImportFailed"] = "导入失败：{0}",
+            ["RowColumn"] = "第{0}行 第{1}列",
+            ["MultilinePreview"] = "{0} …(共 {1} 行)",
+            ["IconId"] = "图标ID: {0}",
+            ["ObjectNotFound"] = "未找到 \"{0}\", 名称需与游戏内完全一致",
+            ["DraggingSlot"] = "拖动: 第 {0} 格",
+            ["Action"] = "技能",
+            ["Emote"] = "情感动作",
+            ["Item"] = "物品",
+            ["Mount"] = "坐骑",
+            ["Companion"] = "宠物",
+            ["GeneralAction"] = "通用技能",
+            ["NoBars"] = "暂无热键栏, 点击\"新增热键栏\"创建",
+            ["AddBar"] = "新增热键栏",
+            ["RemoveBarHelp"] = "删除此热键栏 (不可恢复, 该热键栏的所有格子配置都会丢失)",
+            ["ExportCurrent"] = "导出当前热键栏",
+            ["ExportAll"] = "导出全部",
+            ["Import"] = "从剪贴板导入",
+            ["ImportHelp"] = "读取剪贴板中的热键栏配置并追加，同名热键栏自动重命名",
+            ["Exported"] = "已复制热键栏配置到剪贴板",
+            ["ExportFailed"] = "导出失败：配置过大或含有无效数值",
+            ["Name"] = "名称",
+            ["Visible"] = "显示",
+            ["LockPosition"] = "锁定位置",
+            ["LockPositionHelp"] = "锁定后无法拖动热键栏窗口, 防止误触移动",
+            ["HideEmptySlots"] = "隐藏空格",
+            ["HideEmptySlotsHelp"] = "不渲染没有图标的格子, 热键栏会自动收缩; 只配了指令没配图标的格子同样会被隐藏",
+            ["Layout"] = "布局",
+            ["LayoutHelp"] = "热键栏格子的排列方式, 与游戏内热键栏的 12 格布局一致",
+            ["Scale"] = "缩放",
+            ["Opacity"] = "不透明度",
+            ["Position"] = "位置",
+            ["Icon"] = "图标",
+            ["Tooltip"] = "悬浮说明",
+            ["Command"] = "执行指令",
+            ["TooltipHint"] = "鼠标悬浮时显示的说明文本",
+            ["CommandHint"] = "如 /ac 技能名 或 /p 文本",
+            ["Edit"] = "编辑",
+            ["EditCommandHelp"] = "展开多行编辑, 每行一条指令",
+            ["CommandEditorHelp"] = "执行指令 (每行一条, 点击图标时按顺序执行)",
+            ["Confirm"] = "确定",
+            ["Cancel"] = "取消",
+            ["OpenIconBrowser"] = "打开图标浏览器",
+            ["PickObjectIconHelp"] = "按游戏内名称从技能/物品/坐骑等对象获取图标",
+            ["ObjectIconHelp"] = "从游戏对象获取图标 (名称需与游戏内完全一致)",
+            ["ObjectCategory"] = "类别",
+            ["ObjectNameHint"] = "如 铁壁 / 惊讶 / 蒸馏水",
+            ["ResolveObject"] = "解析",
+            ["ObjectNameRequired"] = "请输入对象名称",
+            ["ReorderSlotHelp"] = "按住拖动以调整格子位置"
+        });
 
     public const int SlotCount = 12;
     private const string STANDALONE_COMMAND = "/customhotbar";
-    private const string OMNI_COMMAND = "/omni";
-    private const string TOGGLE_USAGE = "/omni customhotbar toggle <名称或序号>";
-
-    private CustomHotbarConfig config = new();
+    private Settings config = new();
+    private CustomHotbarPanel? panel;
     private CustomHotbarOverlay? overlay;
-    private FeatureLifetime? runtimeLifetime;
 
     public override bool HasSettings => true;
 
     public override bool DrawSettings()
     {
-        var changed = CustomHotbarPanel.Draw(config, OpenIconBrowser);
+        panel ??= new CustomHotbarPanel(this);
+        var changed = panel.Draw(config, OpenIconBrowser);
         if (changed)
         {
             NormalizeConfig();
@@ -59,179 +134,62 @@ public sealed class CustomHotbar : ModuleBase
 
     public override bool ResetSettings()
     {
-        config.Bars = [new CustomHotbarBarConfig { Name = "热键栏 1" }];
+        if (config.Bars.Count == 1)
+        {
+            var bar = config.Bars[0];
+            if (bar.Name == Text("DefaultBarName", 1) && bar.Visible && !bar.HideEmptySlots &&
+                bar.Position == new Vector2(400f, 300f) && bar.PositionRatio == new Vector2(-1f, -1f) &&
+                bar.GlobalScale == 1f && bar.Opacity == 0.85f && !bar.Locked &&
+                bar.Layout == CustomHotbarLayout.TwelveByOne && bar.Slots.Count == SlotCount &&
+                bar.Slots.All(slot => slot.IconID == 0 && slot.Tooltip.Length == 0 && slot.Command.Length == 0))
+            {
+                return false;
+            }
+        }
+
+        config.Bars = [new CustomHotbarBarConfig { Name = Text("DefaultBarName", 1) }];
         NormalizeConfig();
         return true;
     }
 
-    protected override void OnEnable()
+    protected override void OnStart(FeatureLifetime activation)
     {
         NormalizeConfig();
-        var lifetime = new FeatureLifetime();
-        try
-        {
-            RegisterCommands(DalamudServices.CommandManager, DalamudServices.Framework, lifetime);
+        RegisterCommands(activation);
 
-            var created = new CustomHotbarOverlay(config);
-            var windowManager = WindowManager.Instance();
-            _ = windowManager.WindowSystem;
-            windowManager.PostDraw += created.Draw;
-            lifetime.Add(() => windowManager.PostDraw -= created.Draw);
-            overlay = created;
-            runtimeLifetime = lifetime;
-        }
-        catch
-        {
-            try
-            {
-                lifetime.Dispose();
-            }
-            finally
-            {
-                overlay = null;
-                runtimeLifetime = null;
-            }
-
-            throw;
-        }
+        var created = new CustomHotbarOverlay(config);
+        var windowManager = WindowManager.Instance();
+        _ = windowManager.WindowSystem;
+        activation.OnStopping(() => windowManager.PostDraw -= created.Draw);
+        windowManager.PostDraw += created.Draw;
+        overlay = created;
     }
 
-    protected override void OnDisable()
+    protected override void OnStop()
     {
-        var lifetime = runtimeLifetime;
-        runtimeLifetime = null;
         overlay = null;
-        lifetime?.Dispose();
+        panel = null;
     }
 
-    internal void RegisterCommands(ICommandManager commandManager, IFramework framework, FeatureLifetime lifetime)
+    private void RegisterCommands(FeatureLifetime activation)
     {
-        Action<string, string>? featureHandler = OnCommand;
-        var standalone = new CommandInfo((command, arguments) => featureHandler?.Invoke(command, arguments))
+        var commandManager = DalamudServices.CommandManager;
+        var standalone = new CommandInfo(OnCommand)
         {
-            HelpMessage = "切换热键栏显示/隐藏: /customhotbar toggle <名称或序号>"
+            HelpMessage = Text("StandaloneHelp")
         };
-        if (!commandManager.AddHandler(STANDALONE_COMMAND, standalone))
+        activation.OnStopping(() =>
         {
-            throw new InvalidOperationException("无法注册 /customhotbar：该指令已被占用");
-        }
-
-        lifetime.Add(() =>
-        {
-            featureHandler = null;
             if (commandManager.Commands.TryGetValue(STANDALONE_COMMAND, out var current) &&
                 ReferenceEquals(current, standalone) && !commandManager.RemoveHandler(STANDALONE_COMMAND))
             {
-                throw new InvalidOperationException("无法注销 /customhotbar 指令");
+                throw new InvalidOperationException(Text("UnregisterCommandFailed"));
             }
         });
-
-        var attached = false;
-        void AttachOmniCommand(IFramework sender)
+        if (!commandManager.AddHandler(STANDALONE_COMMAND, standalone))
         {
-            if (attached || featureHandler == null ||
-                !commandManager.Commands.TryGetValue(OMNI_COMMAND, out var hostCommand))
-            {
-                return;
-            }
-
-            framework.Update -= WaitForOmniCommand;
-            if (hostCommand is not CommandInfo originalCommand)
-            {
-                throw new InvalidOperationException("无法接入 /omni：宿主指令类型不支持恢复");
-            }
-
-            // 在线模块的 Commands 只展示帮助；宿主没有为自定义功能名提供注册入口。
-            var registered = new CommandInfo((command, arguments) =>
-            {
-                var handler = featureHandler;
-                var parts = arguments.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
-                if (handler == null || parts.Length == 0 ||
-                    !string.Equals(parts[0], "customhotbar", StringComparison.OrdinalIgnoreCase))
-                {
-                    hostCommand.Handler(command, arguments);
-                    return;
-                }
-
-                handler(parts[0], parts.Length > 1 ? parts[1] : string.Empty);
-            })
-            {
-                HelpMessage = hostCommand.HelpMessage,
-                ShowInHelp = hostCommand.ShowInHelp,
-                DisplayOrder = hostCommand.DisplayOrder,
-                AllowedInMacros = hostCommand.AllowedInMacros
-            };
-
-            if (!commandManager.RemoveHandler(OMNI_COMMAND))
-            {
-                throw new InvalidOperationException("无法接入 /omni：当前命令服务无法移除宿主处理器");
-            }
-
-            try
-            {
-                if (!commandManager.AddHandler(OMNI_COMMAND, registered))
-                {
-                    throw new InvalidOperationException("无法注册 /omni customhotbar 指令");
-                }
-            }
-            catch (Exception exception)
-            {
-                if (!commandManager.Commands.ContainsKey(OMNI_COMMAND) &&
-                    !commandManager.AddHandler(OMNI_COMMAND, originalCommand))
-                {
-                    throw new InvalidOperationException("注册热键栏指令失败，且无法恢复原 /omni 指令", exception);
-                }
-
-                throw;
-            }
-
-            attached = true;
-            lifetime.Add(() =>
-            {
-                featureHandler = null;
-                if (!commandManager.Commands.TryGetValue(OMNI_COMMAND, out var current) ||
-                    !ReferenceEquals(current, registered))
-                {
-                    return;
-                }
-
-                if (!commandManager.RemoveHandler(OMNI_COMMAND) ||
-                    !commandManager.AddHandler(OMNI_COMMAND, originalCommand))
-                {
-                    throw new InvalidOperationException("无法恢复原 /omni 指令");
-                }
-            });
+            throw new InvalidOperationException(Text("RegisterCommandFailed"));
         }
-
-        void WaitForOmniCommand(IFramework sender)
-        {
-            try
-            {
-                AttachOmniCommand(sender);
-            }
-            catch
-            {
-                if (IsEnabled)
-                {
-                    SetEnabled(false);
-                }
-                else
-                {
-                    lifetime.Dispose();
-                }
-
-                throw;
-            }
-        }
-
-        // 宿主可能在启用在线模块之后才注册主指令，等主指令出现再接入。
-        framework.Update += WaitForOmniCommand;
-        lifetime.Add(() =>
-        {
-            featureHandler = null;
-            framework.Update -= WaitForOmniCommand;
-        });
-        AttachOmniCommand(framework);
     }
 
     public override bool TryHandleCommand(string arguments)
@@ -245,17 +203,11 @@ public sealed class CustomHotbar : ModuleBase
         return ToggleBarVisibility(parts.Length > 1 ? parts[1] : string.Empty);
     }
 
-    public override bool TryHandleCommand(string command, string arguments)
-    {
-        return string.Equals(command, "customhotbar", StringComparison.OrdinalIgnoreCase) &&
-               TryHandleCommand(arguments);
-    }
-
     private void OnCommand(string command, string args)
     {
-        if (!TryHandleCommand("customhotbar", args))
+        if (!TryHandleCommand(args))
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {TOGGLE_USAGE}");
+            DalamudServices.ChatGUI.Print(Text("CommandUsage", OmniCommandCatalog.FormatModule(nameof(CustomHotbar), "toggle")));
         }
     }
 
@@ -264,7 +216,7 @@ public sealed class CustomHotbar : ModuleBase
         var argument = arguments.Trim();
         if (argument.Length == 0)
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 用法: {TOGGLE_USAGE}");
+            DalamudServices.ChatGUI.Print(Text("CommandUsage", OmniCommandCatalog.FormatModule(nameof(CustomHotbar), "toggle")));
             return true;
         }
 
@@ -286,7 +238,7 @@ public sealed class CustomHotbar : ModuleBase
 
         if (target == null)
         {
-            DalamudServices.ChatGUI.Print($"[自定义热键栏] 未找到热键栏 \"{argument}\", 用法: {TOGGLE_USAGE}");
+            DalamudServices.ChatGUI.Print(Text("BarNotFound", argument, OmniCommandCatalog.FormatModule(nameof(CustomHotbar), "toggle")));
             return true;
         }
 
@@ -304,7 +256,7 @@ public sealed class CustomHotbar : ModuleBase
             var bar = config.Bars[index];
             if (string.IsNullOrWhiteSpace(bar.Name))
             {
-                bar.Name = $"热键栏 {index + 1}";
+                bar.Name = Text("DefaultBarName", index + 1);
                 changed = true;
             }
 
@@ -399,6 +351,18 @@ public sealed class CustomHotbar : ModuleBase
             }
         }
     }
+    internal string Text(string key, params object[] arguments)
+    {
+        var value = OmniLoc.Get(this, key);
+        return arguments.Length == 0 ? value : string.Format(value, arguments);
+    }
+
+    [Serializable]
+    internal sealed class Settings
+    {
+        public List<CustomHotbarBarConfig> Bars { get; set; } = [];
+    }
+
 }
 
 public enum CustomHotbarLayout
@@ -460,12 +424,6 @@ public sealed class CustomHotbarBarConfig
     public Vector2 Scale(Vector2 value) => value * ScaleValue;
 }
 
-[Serializable]
-public sealed class CustomHotbarConfig
-{
-    public List<CustomHotbarBarConfig> Bars { get; set; } = [];
-}
-
 internal static class CustomHotbarSharing
 {
     private const int MAX_CLIPBOARD_LENGTH = 4 * 1024 * 1024;
@@ -479,39 +437,39 @@ internal static class CustomHotbarSharing
 
     public static string Export(IEnumerable<CustomHotbarBarConfig> bars)
     {
-        var text = JsonSerializer.Serialize(new CustomHotbarConfig { Bars = bars.ToList() }, SerializerOptions);
+        var text = JsonSerializer.Serialize(new CustomHotbar.Settings { Bars = bars.ToList() }, SerializerOptions);
         if (text.Length > MAX_CLIPBOARD_LENGTH)
         {
-            throw new JsonException("配置过大，请分别导出热键栏");
+            throw new JsonException("Clipboard size limit exceeded.");
         }
 
         return text;
     }
 
-    public static bool TryImport(string text, CustomHotbarConfig config, out int count, out string error)
+    public static bool TryImport(string text, CustomHotbar.Settings config, CustomHotbar module, out int count, out string error)
     {
         count = 0;
         error = string.Empty;
         if (string.IsNullOrWhiteSpace(text) || text.Length > MAX_CLIPBOARD_LENGTH)
         {
-            error = "剪贴板为空或配置文本过长";
+            error = "ImportEmpty";
             return false;
         }
 
-        CustomHotbarConfig? imported;
+        CustomHotbar.Settings? imported;
         try
         {
-            imported = JsonSerializer.Deserialize<CustomHotbarConfig>(text, SerializerOptions);
+            imported = JsonSerializer.Deserialize<CustomHotbar.Settings>(text, SerializerOptions);
         }
         catch (JsonException)
         {
-            error = "剪贴板不是有效的热键栏配置";
+            error = "ImportInvalidJson";
             return false;
         }
 
         if (imported?.Bars == null || imported.Bars.Count == 0)
         {
-            error = "配置中没有热键栏";
+            error = "ImportNoBars";
             return false;
         }
 
@@ -524,17 +482,17 @@ internal static class CustomHotbarSharing
                 !float.IsFinite(bar.Position.X) || !float.IsFinite(bar.Position.Y) ||
                 !float.IsFinite(bar.PositionRatio.X) || !float.IsFinite(bar.PositionRatio.Y))
             {
-                error = "配置含有无效热键栏、格子或数值（每栏最多 12 格）";
+                error = "ImportInvalidBar";
                 return false;
             }
 
             CustomHotbar.NormalizeBar(bar);
-            var baseName = string.IsNullOrWhiteSpace(bar.Name) ? "导入的热键栏" : bar.Name.Trim();
+            var baseName = string.IsNullOrWhiteSpace(bar.Name) ? module.Text("ImportedBarName") : bar.Name.Trim();
             var name = baseName;
             var suffix = 1;
             while (!names.Add(name))
             {
-                name = $"{baseName} (导入 {suffix++})";
+                name = module.Text("ImportedNameSuffix", baseName, suffix++);
             }
 
             bar.Name = name;
@@ -546,7 +504,7 @@ internal static class CustomHotbarSharing
     }
 }
 
-internal sealed class CustomHotbarOverlay(CustomHotbarConfig config)
+internal sealed class CustomHotbarOverlay(CustomHotbar.Settings config)
 {
     private readonly CustomHotbarSlotDragState slotDrag = new();
 
@@ -784,11 +742,11 @@ internal sealed class CustomHotbarSlotDragState
     }
 }
 
-internal static class CustomHotbarPanel
+internal sealed class CustomHotbarPanel(CustomHotbar module)
 {
     private const string SlotReorderPayload = "OmniCustomHotbarSlotReorder";
 
-    private static readonly (CustomHotbarLayout Layout, string Name)[] LayoutOptions =
+    private readonly (CustomHotbarLayout Layout, string Name)[] LayoutOptions =
     [
         (CustomHotbarLayout.TwelveByOne, "12 × 1"),
         (CustomHotbarLayout.SixByTwo, "6 × 2"),
@@ -798,33 +756,33 @@ internal static class CustomHotbarPanel
         (CustomHotbarLayout.OneByTwelve, "1 × 12")
     ];
 
-    private static float IconPreviewSize => OmniTheme.Scale(24f);
+    private float IconPreviewSize => OmniTheme.Scale(24f);
 
-    private static int selectedBarIndex;
-    private static int draggedSlotBarIndex = -1;
-    private static int draggedSlotIndex = -1;
-    private static bool reorderDirty;
-    private static CustomHotbarSlot? editingSlot;
-    private static string editBuffer = string.Empty;
-    private static string transferMessage = string.Empty;
+    private int selectedBarIndex;
+    private int draggedSlotBarIndex = -1;
+    private int draggedSlotIndex = -1;
+    private bool reorderDirty;
+    private CustomHotbarSlot? editingSlot;
+    private string editBuffer = string.Empty;
+    private string transferMessage = string.Empty;
 
-    private static readonly string[] GameObjectCategoryLabels =
+    private static readonly string[] GameObjectCategoryKeys =
     [
-        "技能",
-        "情感动作",
-        "物品",
-        "坐骑",
-        "宠物",
-        "通用技能"
+        "Action",
+        "Emote",
+        "Item",
+        "Mount",
+        "Companion",
+        "GeneralAction"
     ];
 
-    private static CustomHotbarSlot? iconPickerSlot;
-    private static int iconPickerCategory;
-    private static string iconPickerName = string.Empty;
-    private static uint iconPickerResolvedIcon;
-    private static string? iconPickerError;
+    private CustomHotbarSlot? iconPickerSlot;
+    private int iconPickerCategory;
+    private string iconPickerName = string.Empty;
+    private uint iconPickerResolvedIcon;
+    private string? iconPickerError;
 
-    public static bool Draw(CustomHotbarConfig config, Action<Action<uint>> openIconBrowser)
+    public bool Draw(CustomHotbar.Settings config, Action<Action<uint>> openIconBrowser)
     {
         var changed = false;
 
@@ -833,7 +791,7 @@ internal static class CustomHotbarPanel
 
         if (config.Bars.Count == 0)
         {
-            ImGui.TextUnformatted("暂无热键栏, 点击\"新增热键栏\"创建");
+            ImGui.TextUnformatted(module.Text("NoBars"));
             return changed;
         }
 
@@ -848,7 +806,7 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static bool DrawBarSelector(CustomHotbarConfig config)
+    private bool DrawBarSelector(CustomHotbar.Settings config)
     {
         var changed = false;
         var width = ImGui.GetContentRegionAvail().X * 0.5f;
@@ -870,12 +828,12 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.SameLine();
-        if (OmniControls.IconButton("customHotbarAddBar", FontAwesomeIcon.Plus, false, "新增热键栏"))
+        if (OmniControls.IconButton("customHotbarAddBar", FontAwesomeIcon.Plus, false, module.Text("AddBar")))
         {
             var offset = 30f * config.Bars.Count;
             config.Bars.Add(new CustomHotbarBarConfig
             {
-                Name = $"热键栏 {config.Bars.Count + 1}",
+                Name = module.Text("DefaultBarName", config.Bars.Count + 1),
                 Position = new Vector2(400f + offset, 300f + offset)
             });
             selectedBarIndex = config.Bars.Count - 1;
@@ -885,7 +843,7 @@ internal static class CustomHotbarPanel
         if (config.Bars.Count > 0 && selectedBarIndex < config.Bars.Count)
         {
             ImGui.SameLine();
-            if (OmniControls.IconButton("customHotbarRemoveBar", FontAwesomeIcon.Trash, false, "删除此热键栏 (不可恢复, 该热键栏的所有格子配置都会丢失)"))
+            if (OmniControls.IconButton("customHotbarRemoveBar", FontAwesomeIcon.Trash, false, module.Text("RemoveBarHelp")))
             {
                 config.Bars.RemoveAt(selectedBarIndex);
                 selectedBarIndex = Math.Max(0, selectedBarIndex - 1);
@@ -896,41 +854,41 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static bool DrawTransferControls(CustomHotbarConfig config)
+    private bool DrawTransferControls(CustomHotbar.Settings config)
     {
         var changed = false;
         using (ImRaii.Disabled(config.Bars.Count == 0))
         {
-            if (OmniControls.SmallButton("导出当前热键栏##customHotbarExportCurrent", false))
+            if (OmniControls.SmallButton(module.Text("ExportCurrent") + "##customHotbarExportCurrent", false))
             {
                 var index = Math.Clamp(selectedBarIndex, 0, config.Bars.Count - 1);
                 ExportToClipboard([config.Bars[index]]);
             }
 
             ImGui.SameLine();
-            if (OmniControls.SmallButton("导出全部##customHotbarExportAll", false))
+            if (OmniControls.SmallButton(module.Text("ExportAll") + "##customHotbarExportAll", false))
             {
                 ExportToClipboard(config.Bars);
             }
         }
 
         ImGui.SameLine();
-        if (OmniControls.SmallButton("从剪贴板导入##customHotbarImport", false))
+        if (OmniControls.SmallButton(module.Text("Import") + "##customHotbarImport", false))
         {
             var firstImportedIndex = config.Bars.Count;
-            if (CustomHotbarSharing.TryImport(ImGui.GetClipboardText(), config, out var count, out var error))
+            if (CustomHotbarSharing.TryImport(ImGui.GetClipboardText(), config, module, out var count, out var error))
             {
                 selectedBarIndex = firstImportedIndex;
-                transferMessage = $"已追加导入 {count} 个热键栏";
+                transferMessage = module.Text("Imported", count);
                 changed = true;
             }
             else
             {
-                transferMessage = $"导入失败：{error}";
+                transferMessage = module.Text("ImportFailed", module.Text(error));
             }
         }
 
-        OmniControls.HelpTooltip("读取剪贴板中的热键栏配置并追加，同名热键栏自动重命名");
+        OmniControls.HelpTooltip(module.Text("ImportHelp"));
         if (transferMessage.Length > 0)
         {
             ImGui.TextUnformatted(transferMessage);
@@ -939,26 +897,26 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static void ExportToClipboard(IEnumerable<CustomHotbarBarConfig> bars)
+    private void ExportToClipboard(IEnumerable<CustomHotbarBarConfig> bars)
     {
         try
         {
             ImGui.SetClipboardText(CustomHotbarSharing.Export(bars));
-            transferMessage = "已复制热键栏配置到剪贴板";
+            transferMessage = module.Text("Exported");
         }
         catch (Exception exception) when (exception is JsonException or ArgumentException)
         {
-            transferMessage = "导出失败：配置过大或含有无效数值";
+            transferMessage = module.Text("ExportFailed");
         }
     }
 
-    private static bool DrawBarEditor(CustomHotbarBarConfig bar, int barIndex, Action<Action<uint>> openIconBrowser)
+    private bool DrawBarEditor(CustomHotbarBarConfig bar, int barIndex, Action<Action<uint>> openIconBrowser)
     {
         var changed = false;
 
         var name = bar.Name;
         ImGui.SetNextItemWidth(OmniTheme.Scale(160f));
-        if (ImGui.InputText("名称##customHotbarBarName", ref name, 64))
+        if (ImGui.InputText(module.Text("Name") + "##customHotbarBarName", ref name, 64))
         {
             bar.Name = name;
         }
@@ -967,7 +925,7 @@ internal static class CustomHotbarPanel
 
         ImGui.SameLine(0f, OmniTheme.Scale(12f));
         var visible = bar.Visible;
-        if (OmniControls.Checkbox("显示##customHotbarBarVisible", ref visible))
+        if (OmniControls.Checkbox(module.Text("Visible") + "##customHotbarBarVisible", ref visible))
         {
             bar.Visible = visible;
             changed = true;
@@ -975,27 +933,27 @@ internal static class CustomHotbarPanel
 
         ImGui.SameLine(0f, OmniTheme.Scale(12f));
         var locked = bar.Locked;
-        if (OmniControls.Checkbox("锁定位置##customHotbarLocked", ref locked))
+        if (OmniControls.Checkbox(module.Text("LockPosition") + "##customHotbarLocked", ref locked))
         {
             bar.Locked = locked;
             changed = true;
         }
 
         ImGui.SameLine(0f, OmniTheme.Scale(6f));
-        OmniControls.HelpIcon("锁定后无法拖动热键栏窗口, 防止误触移动");
+        OmniControls.HelpIcon(module.Text("LockPositionHelp"));
 
         ImGui.SameLine(0f, OmniTheme.Scale(12f));
         var hideEmpty = bar.HideEmptySlots;
-        if (OmniControls.Checkbox("隐藏空格##customHotbarHideEmpty", ref hideEmpty))
+        if (OmniControls.Checkbox(module.Text("HideEmptySlots") + "##customHotbarHideEmpty", ref hideEmpty))
         {
             bar.HideEmptySlots = hideEmpty;
             changed = true;
         }
 
         ImGui.SameLine(0f, OmniTheme.Scale(6f));
-        OmniControls.HelpIcon("不渲染没有图标的格子, 热键栏会自动收缩; 只配了指令没配图标的格子同样会被隐藏");
+        OmniControls.HelpIcon(module.Text("HideEmptySlotsHelp"));
 
-        if (OmniControls.BeginCombo("布局##customHotbarLayout", bar.Layout.DisplayName(), OmniTheme.Scale(120f)))
+        if (OmniControls.BeginCombo(module.Text("Layout") + "##customHotbarLayout", bar.Layout.DisplayName(), OmniTheme.Scale(120f)))
         {
             foreach (var (layout, layoutName) in LayoutOptions)
             {
@@ -1010,11 +968,11 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.SameLine(0f, OmniTheme.Scale(6f));
-        OmniControls.HelpIcon("热键栏格子的排列方式, 与游戏内热键栏的 12 格布局一致");
+        OmniControls.HelpIcon(module.Text("LayoutHelp"));
 
         ImGui.SameLine(0f, OmniTheme.Scale(12f));
         var scale = bar.GlobalScale;
-        if (OmniControls.DragFloat("缩放##customHotbarScale", ref scale, 0.05f, 0.25f, 3f, "%.2f", OmniTheme.Scale(110f), ImGuiSliderFlags.AlwaysClamp))
+        if (OmniControls.DragFloat(module.Text("Scale") + "##customHotbarScale", ref scale, 0.05f, 0.25f, 3f, "%.2f", OmniTheme.Scale(110f), ImGuiSliderFlags.AlwaysClamp))
         {
             bar.GlobalScale = scale;
         }
@@ -1023,7 +981,7 @@ internal static class CustomHotbarPanel
 
         ImGui.SameLine(0f, OmniTheme.Scale(12f));
         var opacity = bar.Opacity;
-        if (OmniControls.DragFloat("不透明度##customHotbarOpacity", ref opacity, 0.01f, 0.05f, 1f, "%.2f", OmniTheme.Scale(110f), ImGuiSliderFlags.AlwaysClamp))
+        if (OmniControls.DragFloat(module.Text("Opacity") + "##customHotbarOpacity", ref opacity, 0.01f, 0.05f, 1f, "%.2f", OmniTheme.Scale(110f), ImGuiSliderFlags.AlwaysClamp))
         {
             bar.Opacity = opacity;
         }
@@ -1038,7 +996,7 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static bool DrawSlotsTable(CustomHotbarBarConfig bar, int barIndex, Action<Action<uint>> openIconBrowser)
+    private bool DrawSlotsTable(CustomHotbarBarConfig bar, int barIndex, Action<Action<uint>> openIconBrowser)
     {
         var changed = false;
         if (reorderDirty && ImGui.GetDragDropPayload().IsNull)
@@ -1058,13 +1016,13 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.TableSetupColumn("##reorder", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(40f));
-        ImGui.TableSetupColumn("位置", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(88f));
-        ImGui.TableSetupColumn("图标", ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(200f));
-        ImGui.TableSetupColumn("悬浮说明", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("执行指令", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn(module.Text("Position"), ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(88f));
+        ImGui.TableSetupColumn(module.Text("Icon"), ImGuiTableColumnFlags.WidthFixed, OmniTheme.Scale(200f));
+        ImGui.TableSetupColumn(module.Text("Tooltip"), ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn(module.Text("Command"), ImGuiTableColumnFlags.WidthStretch);
 
         ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
-        string[] headers = ["", "位置", "图标", "悬浮说明", "执行指令"];
+        string[] headers = ["", module.Text("Position"), module.Text("Icon"), module.Text("Tooltip"), module.Text("Command")];
         for (var column = 0; column < headers.Length; column++)
         {
             ImGui.TableSetColumnIndex(column);
@@ -1096,7 +1054,7 @@ internal static class CustomHotbarPanel
 
             ImGui.TableNextColumn();
             ImGui.AlignTextToFramePadding();
-            var positionText = $"第{index / columns + 1}行 第{index % columns + 1}列";
+            var positionText = module.Text("RowColumn", index / columns + 1, index % columns + 1);
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + MathF.Max(0f, (ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize(positionText).X) * 0.5f));
             ImGui.TextUnformatted(positionText);
 
@@ -1106,7 +1064,7 @@ internal static class CustomHotbarPanel
             ImGui.TableNextColumn();
             var tooltip = slot.Tooltip;
             ImGui.SetNextItemWidth(-1f);
-            if (OmniControls.InputTextWithHint("##tooltip", "鼠标悬浮时显示的说明文本", ref tooltip, 128))
+            if (OmniControls.InputTextWithHint("##tooltip", module.Text("TooltipHint"), ref tooltip, 128))
             {
                 slot.Tooltip = tooltip;
             }
@@ -1127,14 +1085,14 @@ internal static class CustomHotbarPanel
                     }
                 }
 
-                ImGui.TextUnformatted($"{command.Split('\n', 2)[0]} …(共 {lineCount} 行)");
+                ImGui.TextUnformatted(module.Text("MultilinePreview", command.Split('\n', 2)[0], lineCount));
             }
             else
             {
                 var style = ImGui.GetStyle();
-                var editButtonWidth = ImGui.CalcTextSize("编辑").X + style.FramePadding.X * 2f + style.ItemSpacing.X + style.CellPadding.X * 2f + style.ScrollbarSize;
+                var editButtonWidth = ImGui.CalcTextSize(module.Text("Edit")).X + style.FramePadding.X * 2f + style.ItemSpacing.X + style.CellPadding.X * 2f + style.ScrollbarSize;
                 ImGui.SetNextItemWidth(MathF.Max(OmniTheme.Scale(120f), ImGui.GetContentRegionAvail().X - editButtonWidth));
-                if (OmniControls.InputTextWithHint("##command", "如 /ac 技能名 或 /p 文本", ref command, 128))
+                if (OmniControls.InputTextWithHint("##command", module.Text("CommandHint"), ref command, 128))
                 {
                     slot.Command = command;
                 }
@@ -1143,14 +1101,14 @@ internal static class CustomHotbarPanel
             }
 
             ImGui.SameLine();
-            if (OmniControls.SmallButton("编辑##editCommand", false))
+            if (OmniControls.SmallButton(module.Text("Edit") + "##editCommand", false))
             {
                 editingSlot = slot;
                 editBuffer = slot.Command;
                 ImGui.OpenPopup("##customHotbarCommandEditor");
             }
 
-            OmniControls.HelpTooltip("展开多行编辑, 每行一条指令");
+            OmniControls.HelpTooltip(module.Text("EditCommandHelp"));
 
             using (var popup = ImRaii.Popup("##customHotbarCommandEditor"))
             {
@@ -1166,21 +1124,21 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static void DrawCommandEditorPopup(CustomHotbarSlot slot, ref bool changed)
+    private void DrawCommandEditorPopup(CustomHotbarSlot slot, ref bool changed)
     {
         if (editingSlot != slot)
         {
             return;
         }
 
-        ImGui.TextUnformatted("执行指令 (每行一条, 点击图标时按顺序执行)");
+        ImGui.TextUnformatted(module.Text("CommandEditorHelp"));
         var buffer = editBuffer;
         if (ImGui.InputTextMultiline("##customHotbarCommandEditorInput", ref buffer, 2048, new Vector2(OmniTheme.Scale(460f), OmniTheme.Scale(150f))))
         {
             editBuffer = buffer;
         }
 
-        if (OmniControls.SmallButton("确定##confirmCommand", false))
+        if (OmniControls.SmallButton(module.Text("Confirm") + "##confirmCommand", false))
         {
             slot.Command = editBuffer.Trim();
             editingSlot = null;
@@ -1189,14 +1147,14 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.SameLine();
-        if (OmniControls.SmallButton("取消##cancelCommand", false))
+        if (OmniControls.SmallButton(module.Text("Cancel") + "##cancelCommand", false))
         {
             editingSlot = null;
             ImGui.CloseCurrentPopup();
         }
     }
 
-    private static bool DrawIconCell(CustomHotbarSlot slot, Action<Action<uint>> openIconBrowser)
+    private bool DrawIconCell(CustomHotbarSlot slot, Action<Action<uint>> openIconBrowser)
     {
         var changed = false;
 
@@ -1228,13 +1186,13 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.SameLine();
-        if (OmniControls.IconButton("##pickIcon", FontAwesomeIcon.Image, false, "打开图标浏览器"))
+        if (OmniControls.IconButton("##pickIcon", FontAwesomeIcon.Image, false, module.Text("OpenIconBrowser")))
         {
             openIconBrowser(iconID => slot.IconID = iconID);
         }
 
         ImGui.SameLine();
-        if (OmniControls.IconButton("##pickGameObjectIcon", FontAwesomeIcon.Search, false, "按游戏内名称从技能/物品/坐骑等对象获取图标"))
+        if (OmniControls.IconButton("##pickGameObjectIcon", FontAwesomeIcon.Search, false, module.Text("PickObjectIconHelp")))
         {
             iconPickerSlot = slot;
             iconPickerCategory = 0;
@@ -1255,20 +1213,20 @@ internal static class CustomHotbarPanel
         return changed;
     }
 
-    private static void DrawGameObjectIconPopup(CustomHotbarSlot slot, ref bool changed)
+    private void DrawGameObjectIconPopup(CustomHotbarSlot slot, ref bool changed)
     {
         if (iconPickerSlot != slot)
         {
             return;
         }
 
-        ImGui.TextUnformatted("从游戏对象获取图标 (名称需与游戏内完全一致)");
+        ImGui.TextUnformatted(module.Text("ObjectIconHelp"));
 
-        if (OmniControls.BeginCombo("类别##customHotbarGameObjectCategory", GameObjectCategoryLabels[iconPickerCategory], OmniTheme.Scale(110f)))
+        if (OmniControls.BeginCombo(module.Text("ObjectCategory") + "##customHotbarGameObjectCategory", module.Text(GameObjectCategoryKeys[iconPickerCategory]), OmniTheme.Scale(110f)))
         {
-            for (var i = 0; i < GameObjectCategoryLabels.Length; i++)
+            for (var i = 0; i < GameObjectCategoryKeys.Length; i++)
             {
-                if (ImGui.Selectable($"{GameObjectCategoryLabels[i]}##customHotbarGameObjectCategory{i}", iconPickerCategory == i))
+                if (ImGui.Selectable($"{module.Text(GameObjectCategoryKeys[i])}##customHotbarGameObjectCategory{i}", iconPickerCategory == i))
                 {
                     iconPickerCategory = i;
                     iconPickerResolvedIcon = 0;
@@ -1282,7 +1240,7 @@ internal static class CustomHotbarPanel
         ImGui.SameLine(0f, OmniTheme.Scale(8f));
         var name = iconPickerName;
         ImGui.SetNextItemWidth(OmniTheme.Scale(180f));
-        if (OmniControls.InputTextWithHint("##customHotbarGameObjectName", "如 铁壁 / 惊讶 / 蒸馏水", ref name, 64))
+        if (OmniControls.InputTextWithHint("##customHotbarGameObjectName", module.Text("ObjectNameHint"), ref name, 64))
         {
             iconPickerName = name;
             iconPickerResolvedIcon = 0;
@@ -1290,7 +1248,7 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.SameLine(0f, OmniTheme.Scale(8f));
-        if (OmniControls.SmallButton("解析##resolveGameObjectIcon", false))
+        if (OmniControls.SmallButton(module.Text("ResolveObject") + "##resolveGameObjectIcon", false))
         {
             if (TryResolveGameObjectIcon(iconPickerCategory, iconPickerName, out var resolved, out var error))
             {
@@ -1314,7 +1272,7 @@ internal static class CustomHotbarPanel
                 ImGui.SetCursorPosY(rowStartY + MathF.Max(0f, (IconPreviewSize - ImGui.GetTextLineHeight()) * 0.5f));
             }
 
-            ImGui.TextUnformatted($"图标ID: {iconPickerResolvedIcon}");
+            ImGui.TextUnformatted(module.Text("IconId", iconPickerResolvedIcon));
         }
         else if (iconPickerError != null)
         {
@@ -1323,7 +1281,7 @@ internal static class CustomHotbarPanel
 
         using (ImRaii.Disabled(iconPickerResolvedIcon == 0))
         {
-            if (OmniControls.SmallButton("确定##confirmGameObjectIcon", false))
+            if (OmniControls.SmallButton(module.Text("Confirm") + "##confirmGameObjectIcon", false))
             {
                 slot.IconID = iconPickerResolvedIcon;
                 iconPickerSlot = null;
@@ -1333,20 +1291,20 @@ internal static class CustomHotbarPanel
         }
 
         ImGui.SameLine();
-        if (OmniControls.SmallButton("取消##cancelGameObjectIcon", false))
+        if (OmniControls.SmallButton(module.Text("Cancel") + "##cancelGameObjectIcon", false))
         {
             iconPickerSlot = null;
             ImGui.CloseCurrentPopup();
         }
     }
 
-    private static bool TryResolveGameObjectIcon(int categoryIndex, string name, out uint iconID, out string error)
+    private bool TryResolveGameObjectIcon(int categoryIndex, string name, out uint iconID, out string error)
     {
         iconID = 0;
         var trimmed = name.Trim();
         if (trimmed.Length == 0)
         {
-            error = "请输入对象名称";
+            error = module.Text("ObjectNameRequired");
             return false;
         }
 
@@ -1360,11 +1318,11 @@ internal static class CustomHotbarPanel
             _ => TryFindIcon(LuminaGetter.Get<LuminaGeneralAction>(), trimmed, row => row.Name.ExtractText(), row => (uint)row.Icon, out iconID)
         };
 
-        error = found ? string.Empty : $"未找到 \"{trimmed}\", 名称需与游戏内完全一致";
+        error = found ? string.Empty : module.Text("ObjectNotFound", trimmed);
         return found;
     }
 
-    private static bool TryFindIcon<T>(ExcelSheet<T> sheet, string name, Func<T, string> getName, Func<T, uint> getIcon, out uint iconID)
+    private bool TryFindIcon<T>(ExcelSheet<T> sheet, string name, Func<T, string> getName, Func<T, uint> getIcon, out uint iconID)
         where T : struct, IExcelRow<T>
     {
         foreach (var row in sheet)
@@ -1382,9 +1340,9 @@ internal static class CustomHotbarPanel
         return false;
     }
 
-    private static void DrawSlotReorderHandle(int barIndex, List<CustomHotbarSlot> slots, int index)
+    private void DrawSlotReorderHandle(int barIndex, List<CustomHotbarSlot> slots, int index)
     {
-        OmniControls.IconButton($"##customHotbarSlotReorder{barIndex}_{index}", FontAwesomeIcon.Bars, false, "按住拖动以调整格子位置");
+        OmniControls.IconButton($"##customHotbarSlotReorder{barIndex}_{index}", FontAwesomeIcon.Bars, false, module.Text("ReorderSlotHelp"));
 
         using (var source = ImRaii.DragDropSource())
         {
@@ -1396,7 +1354,7 @@ internal static class CustomHotbarPanel
                     draggedSlotIndex = index;
                 }
 
-                ImGui.TextUnformatted($"拖动: 第 {index + 1} 格");
+                ImGui.TextUnformatted(module.Text("DraggingSlot", index + 1));
             }
         }
 

@@ -3,13 +3,19 @@
   "Modules": [
     {
       "InternalName": "CustomHotbar",
-      "Name": "自定义热键栏",
       "Author": "WYJD",
-      "Description": "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令",
-      "Version": "1.6.4",
-      "MinimumOmniVersion": "1.1.7.2",
+      "RepositoryURL": "https://github.com/wuyujindu/OmniToolbox.TreeHouseOnline",
+      "Version": "2.0.0",
+      "ApiVersion": 1,
+      "MinimumOmniVersion": "1.1.8.2",
       "File": "Modules/CustomHotbar.cs",
-      "Sha256": "F0A994CCAF2EB2B24D8857145DAFB816AA60A03B212EDBE8627E98545B1C183E"
+      "Sha256": "2E867286F12DD34EDC5BDAEBDD9765C6F024093202421FCB68CE7F1A6F36C8EF",
+      "Localization": {
+        "Source": {
+          "Title": "自定义热键栏",
+          "Description": "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令"
+        }
+      }
     }
   ]
 }
