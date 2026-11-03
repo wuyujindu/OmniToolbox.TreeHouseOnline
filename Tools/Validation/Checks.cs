@@ -52,7 +52,7 @@ internal static class Checks
                     Expect(source.ContainsKey(command.DescriptionKey));
             }
         });
-        Check("manifest schema, API, metadata and Git LF SHA256", () =>
+        Check("manifest schema, API, metadata and source/DLL SHA256", () =>
         {
             using var manifest = JsonDocument.Parse(File.ReadAllBytes("TreeHouseModules.json"));
             Expect(manifest.RootElement.GetProperty("SchemaVersion").GetInt32() == 1);
@@ -64,10 +64,26 @@ internal static class Checks
                 Expect(uri.Scheme == "https" && uri.Host == "github.com" && uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Length == 2);
                 Expect(!string.IsNullOrWhiteSpace(item.GetProperty("Author").GetString()));
                 var file = item.GetProperty("File").GetString()!;
-                // Git stores these sources as LF; Windows working copies may be CRLF.
-                var bytes = Encoding.UTF8.GetBytes(File.ReadAllText(file).Replace("\r\n", "\n"));
+                var isAssembly = Path.GetExtension(file).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+                // Normalize source files only; a published DLL must be hashed byte-for-byte.
+                var bytes = isAssembly ? File.ReadAllBytes(file)
+                    : Encoding.UTF8.GetBytes(File.ReadAllText(file).Replace("\r\n", "\n"));
                 Expect(Convert.ToHexString(SHA256.HashData(bytes)) == item.GetProperty("Sha256").GetString());
-                var source = module.Localization.Catalogs[UILanguage.SimplifiedChinese];
+                OmniModuleBase publishedModule = module;
+                if (isAssembly)
+                {
+                    var assembly = Assembly.LoadFrom(Path.GetFullPath(file));
+                    var moduleType = assembly.GetTypes().Single(type => !type.IsAbstract && typeof(OmniModuleBase).IsAssignableFrom(type));
+                    validate.Invoke(null, [moduleType]);
+                    publishedModule = (OmniModuleBase)Activator.CreateInstance(moduleType)!;
+                    Expect(assembly.GetName().Name == item.GetProperty("InternalName").GetString());
+                    var release = Version.Parse(item.GetProperty("Version").GetString()!);
+                    Expect(assembly.GetName().Version == new Version(release.Major, release.Minor, release.Build, 0));
+                    var fileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(file);
+                    Expect(fileVersion.FileVersion == release + ".0" && fileVersion.ProductVersion == release.ToString());
+                    Expect(publishedModule.Info.Author == item.GetProperty("Author").GetString());
+                }
+                var source = publishedModule.Localization.Catalogs[UILanguage.SimplifiedChinese];
                 var localization = item.GetProperty("Localization").GetProperty("Source");
                 Expect(localization.GetProperty("Title").GetString() == source["Title"]);
                 Expect(localization.GetProperty("Description").GetString() == source["Description"]);
