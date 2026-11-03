@@ -1,6 +1,6 @@
 # OmniToolbox.TreeHouseOnline
 
-Omni Toolbox 自定义热键栏在线模块仓库。模块使用 **API 1**，需要 Omni **1.1.8.2 或更新版本**。
+Omni Toolbox 自定义热键栏在线模块仓库。模块使用 **API 1**；自定义热键栏需要 Omni **1.1.8.2 或更新版本**，拖放热键栏需要 Omni **1.1.8.9 或更新版本**。
 
 ## 安装与更新
 
@@ -36,6 +36,14 @@ GitHub API 加载清单失败时，宿主会自动回退到 raw 地址，无需�
 
 2.0.0 保留此前发布的 `Bars` 及各热键栏、格子的 JSON 配置键，配置类型改为模块内嵌的 `Settings`。界面和命令说明通过 `ModuleLocalization.Create` 提供简体源文，繁体由宿主生成；其他语言需提供完整词库后才开放对应入口。
 
+## 拖放热键栏 1.0.0
+
+`NativeDragHotbar` 由 Yuzi 提供，作为独立模块与原有 `CustomHotbar` 并存，需要 Omni 1.1.8.9、API 1。已发布的 1.0.0 DLL 原样收录，不替换原模块或迁移其配置。
+
+支持拖入技能、物品、情感动作、功能按钮、用户宏及套装，右键编辑原生动作与附加指令；最多 12 栏、每栏 120 格，自填“横向 × 纵向”布局。缩小保留多余格子，扩大可恢复；支持缩放、不透明度、主题悬浮窗、剪贴板导入导出。悬浮格不显示编号，设置页保留编号。
+
+将游戏中的技能或功能拖入格子，左键执行，右键编辑；Alt + 左键拖动整栏。原生热键栏锁定时仍可拖入，禁止栏内换位和删除。更多安装、构建、验证及限制见[拖放热键栏使用说明](docs/NativeDragHotbar.md)。
+
 ## 模块组织与维护
 
 ```text
@@ -43,11 +51,16 @@ OmniToolbox.TreeHouseOnline/
   Modules/
     CustomHotbar.cs
     OnlineIconExample.cs
+    NativeDragHotbar.dll
+    NativeDragHotbar/           # 拖放热键栏的多文件源码
+  build/NativeDragHotbar/       # DLL 构建工程
+  tests/NativeDragHotbar.Tests/ # 独立离线测试
+  docs/NativeDragHotbar.md
   README.md
   TreeHouseModules.json
 ```
 
-清单只发布 `CustomHotbar`；`OnlineIconExample.cs` 是与新版接口同步的教学示例。
+清单发布 `CustomHotbar`（源码）与 `NativeDragHotbar`（DLL）；`OnlineIconExample.cs` 是与新版接口同步的教学示例。拖放热键栏的多文件源码位于 `Modules/NativeDragHotbar/`，使用独立工程构建，不参与原有单文件模块编译。
 
 一个仓库可包含多个模块，每个发布的 `.cs` 或 `.dll` 只能有一个可实例化模块。源码模式按文件独立编译，辅助类型和词条放在模块文件内；需要跨文件组织时使用 DLL。多个模块仍可共用一个维护帖子。
 
@@ -81,6 +94,6 @@ rtk proxy dotnet run --project Tools/Validation/Validation.csproj -c Release "-p
 rtk proxy python -c "from pathlib import Path; import hashlib; print(hashlib.sha256(Path('Modules/CustomHotbar.cs').read_bytes().replace(b'\r\n', b'\n')).hexdigest().upper())"
 ```
 
-清单中的 `ApiVersion` 为 `1`，`MinimumOmniVersion` 为 `1.1.8.2`，`RepositoryURL` 必须与清单和模块文件所属仓库一致，`Localization.Source` 提供非空的 `Title`、`Description`。
+清单中的 `ApiVersion` 为 `1`，`MinimumOmniVersion` 分别为 `CustomHotbar` 的 `1.1.8.2` 与 `NativeDragHotbar` 的 `1.1.8.9`，`RepositoryURL` 必须与清单和模块文件所属仓库一致，`Localization.Source` 提供非空的 `Title`、`Description`。
 
 上传后在 Omni 中刷新仓库，验证下载、加载及配置保存。Git 可能转换换行符，远端校验应以清单指向的原始文件字节为准。
