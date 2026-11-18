@@ -21,9 +21,17 @@ internal static class Checks
     {
         var module = new CustomHotbar();
         var example = new OnlineIconExample();
+        var gathering = new GatheringNotebook();
         var register = typeof(OmniLoc).GetMethod("RegisterModule", BindingFlags.Static | BindingFlags.NonPublic)!;
         register.Invoke(null, [module]);
         register.Invoke(null, [example]);
+        register.Invoke(null, [gathering]);
+        var owners = new Dictionary<string, OmniModuleBase>(StringComparer.Ordinal)
+        {
+            ["CustomHotbar"] = module,
+            ["OnlineIconExample"] = example,
+            ["GatheringNotebook"] = gathering
+        };
         typeof(OmniLoc).GetMethod("ApplyLanguage", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [UILanguage.SimplifiedChinese]);
         var contract = typeof(OmniModuleBase).Assembly.GetType("OmniToolbox.Common.Module.Runtime.ModuleContract", true)!;
@@ -33,11 +41,13 @@ internal static class Checks
         {
             validate.Invoke(null, [typeof(CustomHotbar)]);
             validate.Invoke(null, [typeof(OnlineIconExample)]);
+            validate.Invoke(null, [typeof(GatheringNotebook)]);
             Expect(typeof(CustomHotbar).GetCustomAttribute<ModuleApiVersionAttribute>()?.Version == 1);
+            Expect(typeof(GatheringNotebook).GetCustomAttribute<ModuleApiVersionAttribute>()?.Version == 1);
         });
         Check("complete Chinese catalogs and command descriptions", () =>
         {
-            foreach (var owner in new OmniModuleBase[] { module, example })
+            foreach (var owner in new OmniModuleBase[] { module, example, gathering })
             {
                 var source = owner.Localization.Catalogs[UILanguage.SimplifiedChinese];
                 var traditional = owner.Localization.Catalogs[UILanguage.TraditionalChinese];
@@ -67,7 +77,9 @@ internal static class Checks
                 // Git stores these sources as LF; Windows working copies may be CRLF.
                 var bytes = Encoding.UTF8.GetBytes(File.ReadAllText(file).Replace("\r\n", "\n"));
                 Expect(Convert.ToHexString(SHA256.HashData(bytes)) == item.GetProperty("Sha256").GetString());
-                var source = module.Localization.Catalogs[UILanguage.SimplifiedChinese];
+                var internalName = item.GetProperty("InternalName").GetString()!;
+                Expect(owners.TryGetValue(internalName, out var owner));
+                var source = owner!.Localization.Catalogs[UILanguage.SimplifiedChinese];
                 var localization = item.GetProperty("Localization").GetProperty("Source");
                 Expect(localization.GetProperty("Title").GetString() == source["Title"]);
                 Expect(localization.GetProperty("Description").GetString() == source["Description"]);
@@ -106,6 +118,39 @@ internal static class Checks
             Expect(bar.GlobalScale == 1 && bar.Opacity == 0.85f);
             foreach (var layout in Enum.GetValues<CustomHotbarLayout>())
                 Expect(layout.Columns() * layout.Rows() == 12);
+        });
+        Check("gathering notebook branches, filtering and sorting", () =>
+        {
+            Expect(GatheringNotebook.ClassifyGatheringType(0) == GatheringBranch.Mining);
+            Expect(GatheringNotebook.ClassifyGatheringType(1) == GatheringBranch.Mining);
+            Expect(GatheringNotebook.ClassifyGatheringType(2) == GatheringBranch.Botany);
+            Expect(GatheringNotebook.ClassifyGatheringType(3) == GatheringBranch.Botany);
+            Expect(GatheringNotebook.ClassifyGatheringType(4) == GatheringBranch.None);
+            Expect(GatheringNotebook.ClassifyGatheringType(99) == GatheringBranch.None);
+
+            var entries = new[]
+            {
+                new GatheringEntry { Name = "铁矿", Level = 10 },
+                new GatheringEntry { Name = "秘银矿", Level = 30, Collected = true },
+                new GatheringEntry { Name = "枫木原木", Level = 10 }
+            };
+
+            Expect(GatheringNotebook.Filter(entries, false, string.Empty).Count == 2);
+            Expect(GatheringNotebook.Filter(entries, true, string.Empty).Count == 3);
+            Expect(GatheringNotebook.Filter(entries, false, "矿").Count == 1);
+            Expect(GatheringNotebook.Filter(entries, false, "  矿  ").Count == 1);
+            Expect(GatheringNotebook.Filter(entries, false, "不存在").Count == 0);
+
+            var sorted = entries.ToList();
+            sorted.Sort(GatheringNotebook.CompareEntries);
+            Expect(sorted[0].Level == 10 && sorted[1].Level == 10 && sorted[^1].Level == 30);
+
+            var settings = (GatheringNotebook.Settings)typeof(GatheringNotebook)
+                .GetField("config", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(gathering)!;
+            Expect(!gathering.ResetSettings());
+            settings.ShowCollected = true;
+            Expect(gathering.ResetSettings() && !settings.ShowCollected);
+            Expect(!gathering.ResetSettings());
         });
         Check("command normalization", () =>
         {

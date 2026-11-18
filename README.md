@@ -1,6 +1,6 @@
 # OmniToolbox.TreeHouseOnline
 
-Omni Toolbox 自定义热键栏在线模块仓库。模块使用 **API 1**，需要 Omni **1.1.8.2 或更新版本**。
+Omni Toolbox 在线模块仓库（自定义热键栏、采集笔记图鉴）。模块使用 **API 1**，需要 Omni **1.1.8.2 或更新版本**。
 
 ## 安装与更新
 
@@ -36,18 +36,30 @@ GitHub API 加载清单失败时，宿主会自动回退到 raw 地址，无需�
 
 2.0.0 保留此前发布的 `Bars` 及各热键栏、格子的 JSON 配置键，配置类型改为模块内嵌的 `Settings`。界面和命令说明通过 `ModuleLocalization.Create` 提供简体源文，繁体由宿主生成；其他语言需提供完整词库后才开放对应入口。
 
+## 采集笔记图鉴
+
+`GatheringNotebook` 读取角色采集笔记的完成情况，按**采矿**和**园艺**两个分支列出尚未采集过的采集物。列表显示图标、名称、等级与星级，并给出两个分支的已采集进度。
+
+- 采集物来自 `GatheringItem`，按 `GatheringPointBase.GatheringType` 归入分支：`0/1`（采掘、碎石）算采矿，`2/3`（采伐、割草）算园艺，捕鱼用的类型不纳入。
+- 完成状态调用 `QuestManager.IsGatheringItemGathered(gatheringItemId)`，参数是 `GatheringItem` 的 RowId；只在角色登录后读取，未登录时仅显示提示。
+- 采集物名称与图标同时兼容 `Item` 与 `EventItem`（活动采集物），活动物品取 `EventItem.Singular`。`GatheringItem.IsHidden` 标记的条目也会列出，因此总数可能比游戏内列表略多。
+- 设置项：显示已采集、按名称搜索、手动刷新；设置界面打开时每 2 秒自动刷新一次。
+
+当前国服数据下两个分支各约 980 / 1100 条，版本 1.0.0。由于完成状态来自游戏内存，只有在游戏内登录角色后才会显示真实进度。
+
 ## 模块组织与维护
 
 ```text
 OmniToolbox.TreeHouseOnline/
   Modules/
     CustomHotbar.cs
+    GatheringNotebook.cs
     OnlineIconExample.cs
   README.md
   TreeHouseModules.json
 ```
 
-清单只发布 `CustomHotbar`；`OnlineIconExample.cs` 是与新版接口同步的教学示例。
+清单发布 `CustomHotbar` 和 `GatheringNotebook`；`OnlineIconExample.cs` 是与新版接口同步的教学示例。
 
 一个仓库可包含多个模块，每个发布的 `.cs` 或 `.dll` 只能有一个可实例化模块。源码模式按文件独立编译，辅助类型和词条放在模块文件内；需要跨文件组织时使用 DLL。多个模块仍可共用一个维护帖子。
 
@@ -63,22 +75,30 @@ OmniToolbox.TreeHouseOnline/
 $omniPath = '<Omni 插件版本目录>'
 $dalamudPath = '<Dalamud addon\Hooks\dev 目录>'
 rtk proxy dotnet build Tools/Validation/Validation.csproj -c Release -p:ModuleName=CustomHotbar "-p:OmniPath=$omniPath" "-p:DalamudPath=$dalamudPath"
+rtk proxy dotnet build Tools/Validation/Validation.csproj -c Release -p:ModuleName=GatheringNotebook "-p:OmniPath=$omniPath" "-p:DalamudPath=$dalamudPath"
 rtk proxy dotnet build Tools/Validation/Validation.csproj -c Release -p:ModuleName=OnlineIconExample "-p:OmniPath=$omniPath" "-p:DalamudPath=$dalamudPath"
 rtk proxy dotnet run --project Tools/Validation/Validation.csproj -c Release "-p:OmniPath=$omniPath" "-p:DalamudPath=$dalamudPath"
 ```
 
-前两条命令按文件独立编译；最后一条运行宿主 API 契约、简繁词库、旧 JSON 配置、命令切换、导入导出边界、重置和独立命令清理测试。测试中的命令管理器使用替身，不向游戏发送指令；测试程序集不加入发布清单。
+前三条命令按文件独立编译；最后一条运行宿主 API 契约、简繁词库、旧 JSON 配置、采集笔记分支与筛选、命令切换、导入导出边界、重置和独立命令清理测试。测试中的命令管理器使用替身，不向游戏发送指令；测试程序集不加入发布清单。
 
-本次使用 Omni 1.1.8.7 / Dalamud 15.0.3.9 的真实程序集验证。游戏内的绘制、拖动、图标选择与宿主下载、重启后的配置恢复仍需在 Omni 中验收。
+本次使用 Omni 1.2.0.6 与当前 Dalamud dev 的真实程序集验证。游戏内的绘制、拖动、图标选择、采集笔记进度读取与宿主下载、重启后的配置恢复仍需在 Omni 中验收。
 
 ## 发布校验
 
 最终模块文件的 SHA256 必须与清单一致，修改代码、编码、换行或重新编译后均需重新计算：
 
-本仓库源码在 Git 中存储为 LF，Windows 工作副本可为 CRLF；清单摘要按 Git 发布的 LF 内容计算：
+本仓库源码在 Git 中存储为 LF，Windows 工作副本可为 CRLF；清单摘要按 Git 发布的 LF 内容计算，每个模块文件分别计算：
 
 ```powershell
+# 有 Python 时（把路径换成对应模块文件）
 rtk proxy python -c "from pathlib import Path; import hashlib; print(hashlib.sha256(Path('Modules/CustomHotbar.cs').read_bytes().replace(b'\r\n', b'\n')).hexdigest().upper())"
+
+# 没有 Python 时用 PowerShell
+$path = "Modules\CustomHotbar.cs"
+$text = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes((Resolve-Path $path)))
+$bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($text.Replace("`r`n", "`n"))
+-join ([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString("X2") })
 ```
 
 清单中的 `ApiVersion` 为 `1`，`MinimumOmniVersion` 为 `1.1.8.2`，`RepositoryURL` 必须与清单和模块文件所属仓库一致，`Localization.Source` 提供非空的 `Title`、`Description`。
