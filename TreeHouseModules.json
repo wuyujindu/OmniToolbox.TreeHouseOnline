@@ -16,22 +16,6 @@
           "Description": "在屏幕上放置一组可自定义图标、悬浮说明与指令的热键栏, 点击图标即可执行对应的游戏或插件指令"
         }
       }
-    },
-    {
-      "InternalName": "GatheringNotebook",
-      "Author": "WYJD",
-      "RepositoryURL": "https://github.com/wuyujindu/OmniToolbox.TreeHouseOnline",
-      "Version": "1.0.0",
-      "ApiVersion": 1,
-      "MinimumOmniVersion": "1.1.8.2",
-      "File": "Modules/GatheringNotebook.cs",
-      "Sha256": "9BA72E01D5E55E541D6530F7B36A85738D92BD6EEC927D6A4F08724EB67DAE0D",
-      "Localization": {
-        "Source": {
-          "Title": "采集笔记图鉴",
-          "Description": "检测角色采集笔记的完成情况, 按采矿与园艺两个分支列出尚未采集过的采集物"
-        }
-      }
     }
   ]
 }
